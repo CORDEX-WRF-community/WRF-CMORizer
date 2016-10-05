@@ -250,9 +250,9 @@ MODULE NameListHandling
   INTEGER ::  nx, ny, nz, xoffset, yoffset, xfocus, yfocus
   CHARACTER (len = 4) :: ts, te, tstot, tetot
 
-  CHARACTER (len = 200) :: PnFnGeo
+  CHARACTER (len = 300) :: PnFnGeo
 
-  NAMELIST / globalvars / Conventions, contact, experiment_id, experiment, &
+  NAMELIST / globalvars / Conventions, contact, experiment, experiment_id, &
     driving_experiment, driving_model_id, driving_model_ensemble_member, &
     driving_experiment_name, institution, institute_id, model_id, &
     rcm_version_id, project_id, CORDEX_domain, product, references
@@ -301,13 +301,13 @@ END INTERFACE
 !===============================================================================
 ! filenames
 
-CHARACTER (len = *), PARAMETER :: fnNMLexp = "runctrl.mpiesmlrrcp45.nml" !"runctrl.erainteval_EUR11_MIUB_1hr.nml" !"runctrl.erainteval_EUR11_MIUB_1hr.nml" !"runctrl.mpiesmlrhist.nml" !"runctrl.erainteval.nml" !"runctrl.access13hist.nml"
+CHARACTER (len = *), PARAMETER :: fnNMLexp = "runctrl.mpiesmlrrcp45.nml" !"runctrl.mpiesmlrhist.nml" !"runctrl.erainteval.nml" !"runctrl.access13hist.nml"
 
 !CHARACTER (len = *), PARAMETER :: fnNMLvar = "runctrl.vars.nml" !"runctrl.vars.nml_evp_roff" !"runctrl.vars.nml_water_column" ! "runctrl.vars.nml_vars_on_plevels"  !"runctrl.vars.nml_vars_on_plevels" !"runctrl.vars.nml_pr"
 CHARACTER (len = 100), DIMENSION(:), ALLOCATABLE :: fnNMLvar
 
-CHARACTER (len = *), PARAMETER :: PathFileNameInTEST = "testWRFin.nc"
-CHARACTER (len = *), PARAMETER :: PathFileNameOutTEST = "testESGout.nc"
+!CHARACTER (len = *), PARAMETER :: PathFileNameInTEST = "testWRFin.nc"
+!CHARACTER (len = *), PARAMETER :: PathFileNameOutTEST = "testESGout.nc"
 
 CHARACTER (len = 200) :: pn_out, fn_out, iflWRFin
 
@@ -367,7 +367,7 @@ CHARACTER (len = 3), DIMENSION(:), ALLOCATABLE :: frequency
 !!!INTEGER :: WRFfileNyears, WRFfileNmonths
 INTEGER, DIMENSION(:), ALLOCATABLE :: InDateTimeYear, InDateTimeMonth, &
   InDateTimeDay, InDateTimeHour      !, WRFfileIyears, WRFfileImonths
-CHARACTER (LEN=4) :: InDateTimeYearStr
+CHARACTER (LEN=4) :: InDateTimeYearStr, EndInDateTimeYearStr
 !CHARACTER (LEN=2) :: InDateTimeMonthStr
 INTEGER :: InDateTimeYearPrev = 0  !, InDateTimeMonthPrev = 0
 
@@ -392,15 +392,15 @@ REAL :: cpuTs, cpuTe
 CHARACTER (len = *), PARAMETER :: cmdUUID = "uuidgen -t > tmpfileUUID"
 CHARACTER (len = 37) :: trackingID
 
-CHARACTER (len = *), PARAMETER :: cmdDate = "date -u +%Y-%m-%d-T%H:%M:%SZ > tmpfileDate"
-CHARACTER (len = 21) :: creationDate
+CHARACTER (len = *), PARAMETER :: cmdDate = "date -u +%Y-%m-%dT%H:%M:%SZ > tmpfileDate"
+CHARACTER (len = 21) :: creationDate, EndDate
 
 !===============================================================================
 
 PRINT *, "============================================================"
 PRINT *, "*** NML READING ***"
 PRINT *, fnNMLexp
-PRINT *, fnNMLvar
+!PRINT *, fnNMLvar
 
 OPEN(2,FILE=fnNMLexp)
 READ(UNIT=2,NML=globalvars)
@@ -456,25 +456,37 @@ ALLOCATE( GeoInRLon(xfocus) )
 
 sts = NF90_OPEN(TRIM(PnFnGeo), NF90_NOWRITE, ncidin)
 
-sts = NF90_INQ_VARID(ncidin, "XLONG_M", varid)
+!sts = NF90_INQ_VARID(ncidin, "XLONG_M", varid)
+sts = NF90_INQ_VARID(ncidin, "XLONG", varid)
 sts = NF90_GET_VAR(ncidin, varid, GeoInLonLat(:, :, 1), &
   START = (/ xoffset, yoffset, 1 /), COUNT = (/ xfocus, yfocus, 1 /)) !normal order: x y z t
 
-PRINT *, "GeoInLonLat(1, 1, 1)", GeoInLonLat(1, 1, 1)
-
-sts = NF90_INQ_VARID(ncidin, "XLAT_M", varid)
+!sts = NF90_INQ_VARID(ncidin, "XLAT_M", varid)
+sts = NF90_INQ_VARID(ncidin, "XLAT", varid)
 sts = NF90_GET_VAR(ncidin, varid, GeoInLonLat(:, :, 2), &
   START = (/ xoffset, yoffset, 1 /), COUNT = (/ xfocus, yfocus, 1 /))
 
-sts = NF90_INQ_VARID(ncidin, "CLONG", varid)
+!sts = NF90_INQ_VARID(ncidin, "CLONG", varid)
+sts = NF90_INQ_VARID(ncidin, "XLONG", varid)
 sts = NF90_GET_VAR(ncidin, varid, GeoInRLon(:), &
   START = (/ xoffset, 1, 1 /), COUNT = (/ xfocus, 1, 1 /))
 
-sts = NF90_INQ_VARID(ncidin, "CLAT", varid)
+!sts = NF90_INQ_VARID(ncidin, "CLAT", varid)
+sts = NF90_INQ_VARID(ncidin, "XLAT", varid)
 sts = NF90_GET_VAR(ncidin, varid, GeoInRLat(:), &
   START = (/ 1, yoffset, 1 /), COUNT = (/ 1, yfocus, 1 /))
 
 sts = NF90_CLOSE(ncidin)
+
+! Change rlon (add 180 degrees)
+!DO i=1,size(GeoInRLon(:))
+! IF ( GeoInRLon(i) .lt. 0 ) THEN
+!    GeoInRLon(i)=GeoInRLon(i)+180.
+! ELSE
+!    GeoInRLon(i)=180.-GeoInRLon(i)
+! END IF
+!END DO
+
 
 !PRINT *, "rlon = "
 !PRINT *, SHAPE(GeoInRLon)
@@ -492,31 +504,31 @@ sts = NF90_CLOSE(ncidin)
 !-------------------------------------------------------------------------------
 ! main loop over the different variables, namelist controlled
 
-ALLOCATE ( frequency(7) )
+ALLOCATE ( frequency(2) )
 frequency(1) = "3hr"
 frequency(2) = "6hr"
-frequency(3) = "day"
-frequency(4) = "mon"
-frequency(5) = "sem"
-frequency(6) = "fx"
-frequency(7) = "1hr"
+!frequency(3) = "day"
+!frequency(4) = "mon"
+!frequency(5) = "sem"
+!frequency(6) = "fx"
+!frequency(7) = "1hr"
 
 
-ALLOCATE ( fnNMLvar(9) )
+ALLOCATE ( fnNMLvar(8) )
 fnNMLvar(1) = "runctrl.vars.nml"
 fnNMLvar(2) = "runctrl.vars.nml_evp_roff"
 fnNMLvar(3) = "runctrl.vars.nml_water_column"
 fnNMLvar(4) = "runctrl.vars.nml_vars_on_plevels"
 fnNMLvar(5) = "runctrl.vars.nml_pr_mrso"
 fnNMLvar(6) = "runctrl.vars.nml_snow"
-fnNMLvar(7) = "runctrl.vars.nml_radiation_alternative"
-fnNMLvar(8) = "runctrl.vars.nml_cape"
-fnNMLvar(9) = "runctrl.vars.nml_pr_tas_1hr_test"
+fnNMLvar(7) = "runctrl.vars.nml_radiation"
+!fnNMLvar(8) = "runctrl.vars.nml_cape"
+!fnNMLvar(9) = "runctrl.vars.nml_pr_tas_1hr_test"
 
 
 !DO ifrq = 1, SIZE(frequency), 1
 !DO ifrq = 1, 1, 1
-ifrq = 1   !SKn: for now just 3hr frequency possible, test 1hr frequency 
+ifrq = 1   !SKn: for now just 3hr frequency possible. 
 
 PRINT *, "============================================================"
 PRINT *, "freq = ", frequency(ifrq)
@@ -553,13 +565,17 @@ PRINT *, "*** FILELIST CREATION ***"
 
 tmpfileFL = "tmpfileFL"
 
-PRINT *, "filelist search pattern = ", TRIM(DirInputSimResRoot) // "/" // TRIM(domain) // "/" // "*/*wrfout*nc"
-CALL SYSTEM("ls -1 " // TRIM(DirInputSimResRoot) // "/" // TRIM(domain) // "/*/*wrfout*{" // ts // ".." // te // "}*nc > " // tmpfileFL)
+!PRINT *, "filelist search pattern = ", TRIM(DirInputSimResRoot) // "/" // TRIM(domain) // "/" // "*/*wrfout*nc"
+!CALL SYSTEM("ls -1 " // TRIM(DirInputSimResRoot) // "/" // TRIM(domain) // "/*/*wrfout*{" // ts // ".." // te // "}*nc > " // tmpfileFL)
+
+PRINT *, "filelist search pattern = ", TRIM(DirInputSimResRoot) // "/" // "wrfout*" //TRIM(domain)
+CALL SYSTEM("ls -1 " // TRIM(DirInputSimResRoot) // "/" // "wrfout*" //TRIM(domain)//"*{" // ts // ".." // te // "}* > " // tmpfileFL)
+
 ft = 0
 CALL generateFilelist
 
 !PRINT *, "filelist search pattern = ", TRIM(DirInputSimResRoot) // "/" // TRIM(domain) // "/" // "*/*wrfxtrm*nc"
-!CALL SYSTEM("ls -1 " // TRIM(DirInputSimResRoot) // "/" // TRIM(domain) // "/*/*wrfxtrm*{" // ts // ".." // te // "}*nc > " // tmpfileFL)
+!CALL SYSTEM("ls -1 " // TRIM(DirInputSimResRoot) // "/" // "wrfxtrm*" //TRIM(domain)//"*{" // ts // ".." // te // "}* > " // tmpfileFL)
 !ft = 1
 !CALL generateFilelist
 
@@ -582,7 +598,7 @@ PRINT *, "SIZE(TimeRefArray,1)",SIZE(TimeRefArray,1)
 PRINT *, "SHAPE(TimeRefArray,1)",  SHAPE(TimeRefArray,1)
 !-------------------------------------------------------------------------------
 ! loop over the different variables
-DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but one namelist for all vars is to big)
+DO varnml = 1, 7, 1 !loop over different var namelists (not best solution, but one namelist for all vars is to big)
                     !choose just specific namelists from list above if you want to postprocess just specific variables
 
   OPEN(2,FILE=TRIM(fnNMLvar(varnml)))
@@ -623,18 +639,18 @@ DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but o
     nvar_nml = 6 
   CASE ("runctrl.vars.nml_radiation")
     nvar_nml = 9
-  CASE ("runctrl.vars.nml_radiation_alternative")
-    nvar_nml = 9
-  CASE ("runctrl.vars.nml_cape")
-    nvar_nml = 1
-  CASE ("runctrl.vars.nml_pr_tas_1hr_test")
-    nvar_nml = 3
+!  CASE ("runctrl.vars.nml_radiation_alternative")
+!    nvar_nml = 9
+!  CASE ("runctrl.vars.nml_cape")
+!    nvar_nml = 1
+!  CASE ("runctrl.vars.nml_pr_tas_1hr_test")
+!    nvar_nml = 3
   END SELECT
 
   print*, "nvar_nml", nvar_nml
 
-  !DO ivar = 1, nvar_nml, 1
-  DO ivar = 1, 1, 1    !choose just specific variables from namelist (look up var entry in individual namelist)
+  DO ivar = 1, nvar_nml, 1
+  !DO ivar = 1, 1, 1    !choose just specific variables from namelist (look up var entry in individual namelist)
 
     PRINT *,"============================================================"
     PRINT *, "*** ", TRIM(var_cmip(ivar)), " ***"
@@ -644,7 +660,11 @@ DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but o
 ! content of filelist is defined by filename patterns in system call
 
     DO ifl = 1, SIZE(fl_wrfout), 1 ! operational: loop over complete filelist
-    print *,' SIZE(fl_wrfout', SIZE(fl_wrfout)
+     print *,' SIZE(fl_wrfout', SIZE(fl_wrfout)
+
+!     DO ifl = 1, SIZE(fl_wrfxtr), 1 ! operational: loop over complete filelist
+!      print *,' SIZE(fl_wrfout', SIZE(fl_wrfxtr)
+
     !DO ifl = 1, 1, 1 ! testing: loop over specific entry in filelist (e.g. just January)
 
       CALL CPU_TIME(cpuTs)
@@ -726,13 +746,22 @@ DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but o
           !READ( InDateTimeYear(it), '(4A)' ) InDateTimeYearStr
           !READ( InDateTimeMonth(it), '(2A)' ) InDateTimeMonthStr
           WRITE (InDateTimeYearStr,'(I4.4)') InDateTimeYear(it)
+          WRITE (EndInDateTimeYearStr,'(I4.4)') InDateTimeYear(it)+1
           !WRITE (InDateTimeMonthStr,'(I2.2)') InDateTimeMonth(it)
           !PRINT *, InDateTimeYearStr, InDateTimeMonthStr
 
           PRINT *, "size & shape of the TimRefArray = ", SIZE(TimeRefArray), &
                      SHAPE(TimeRefArray)
 
-          pn_out = TRIM(CORDEX_domain)                 // "/" // &
+          IF ( cell_methods(ivar) == "mean" ) THEN
+            EndDate=EndInDateTimeYearStr//"010100"
+          ELSE
+            EndDate=InDateTimeYearStr//"123121"
+          END IF
+
+
+          pn_out = TRIM(product)                       // "/" // &
+                   TRIM(CORDEX_domain)                 // "/" // &
                    TRIM(institute_id)                  // "/" // &
                    TRIM(driving_model_id)              // "/" // &
                    TRIM(driving_experiment_name)       // "/" // &
@@ -750,7 +779,8 @@ DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but o
                    TRIM(model_id)                      // "_" // &
                    TRIM(rcm_version_id)                // "_" // &
                    TRIM(frequency(ifrq))               // "_" // &
-                   InDateTimeYearStr//"010100-"//InDateTimeYearStr//"12312100" // &
+!                   InDateTimeYearStr//"010100-"//InDateTimeYearStr//"123121" // &
+                   InDateTimeYearStr//"010100-"//TRIM(EndDate)//  &
                    ".nc"
 
           PRINT *, "pn_out = ", TRIM(pn_out)
@@ -791,11 +821,11 @@ DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but o
 
           print *, "ALLOCATE( TimeRefArraySelYear( counter, 5 ) )"
 
-          !print *, "TimeRefArraySelYear( counter, 1 )", TimeRefArraySelYear( counter, 1 )
-          !print *, "TimeRefArraySelYear( counter, 2 )", TimeRefArraySelYear( counter, 2 )
-          !print *, "TimeRefArraySelYear( counter, 3 )", TimeRefArraySelYear( counter, 3 )
-          !print *, "TimeRefArraySelYear( counter, 4 )", TimeRefArraySelYear( counter, 4 )
-          !print *, "TimeRefArraySelYear( counter, 5 )", TimeRefArraySelYear( counter, 5 )
+          print *, "TimeRefArraySelYear( counter, 1 )", TimeRefArraySelYear( counter, 1 )
+          print *, "TimeRefArraySelYear( counter, 2 )", TimeRefArraySelYear( counter, 2 )
+          print *, "TimeRefArraySelYear( counter, 3 )", TimeRefArraySelYear( counter, 3 )
+          print *, "TimeRefArraySelYear( counter, 4 )", TimeRefArraySelYear( counter, 4 )
+          print *, "TimeRefArraySelYear( counter, 5 )", TimeRefArraySelYear( counter, 5 )
 
           ! find the matching elements of the respecitve year and copy them
 
@@ -808,10 +838,6 @@ DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but o
             IF ( TimeRefArray(i,2) == InDateTimeYear(it)) THEN
               counter = counter + 1
               TimeRefArraySelYear(counter,1:5) = TimeRefArray(i,1:5)
-              !print *, 'counter', counter
-              !print *, 'i', i
-              !print *, 'TimeRefArraySelYear(counter,1:5)', TimeRefArraySelYear(counter,1:5)
-              
             END IF
           END DO
 
@@ -864,15 +890,20 @@ DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but o
             !comb_flags = IOR(NF90_HDF5, NF90_CLASSIC_MODEL)
             !https://www.unidata.ucar.edu/software/netcdf/docs/netcdf-f90/NF90_005fCREATE.html
             !sts = NF90_CREATE(TRIM(DirOutputPostProRoot) // "/" // TRIM(pn_out) // "/" // TRIM(fn_out), IOR(NF90_HDF5, NF90_CLASSIC_MODEL), ncid)   !not sure whether this is the right data format spec. I guess it may be right using compression but not the other fancy stuff from NetCDF4
-            !sts = NF90_CREATE(TRIM(DirOutputPostProRoot) // "/" // TRIM(pn_out) // "/" // TRIM(fn_out), IOR(NF90_NETCDF4, NF90_CLASSIC_MODEL), ncid)   !if anything, then use this here
-            sts = NF90_CREATE(TRIM(DirOutputPostProRoot) // "/" // TRIM(pn_out) // "/" // TRIM(fn_out), NF90_NETCDF4, ncid)
+!            sts = NF90_CREATE(TRIM(DirOutputPostProRoot) // "/" // TRIM(pn_out) // "/" // TRIM(fn_out), IOR(NF90_NETCDF4, NF90_CLASSIC_MODEL), ncid)   !if anything, then use this here
+            sts = NF90_CREATE(TRIM(DirOutputPostProRoot) // "/" // TRIM(pn_out) // "/" // TRIM(fn_out), NF90_HDF5, ncid)
 
+            
             ! always included
             sts = NF90_DEF_DIM(ncid, "rlon", xfocus, lon_dimid)
             sts = NF90_DEF_DIM(ncid, "rlat", yfocus, lat_dimid)
-            sts = NF90_DEF_DIM(ncid, "height", 1, height_dimid)
+!            sts = NF90_DEF_DIM(ncid, "height", 1, height_dimid)
             sts = NF90_DEF_DIM(ncid, "time", NF90_UNLIMITED, rec_dimid)
-            sts = NF90_DEF_DIM(ncid, "nb2", 2, nb2_dimid)
+
+            ! for mean variables
+            IF ( cell_methods(ivar) == "mean" ) THEN
+            sts = NF90_DEF_DIM(ncid, "bnds", 2, nb2_dimid)
+            END IF
 
 
             ! always included
@@ -903,19 +934,29 @@ DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but o
 
             ! always included
             ! restriction to one domain only
-            sts = nf90_def_var(ncid, "rotated_pole", NF90_CHAR, rotated_pole_varid)
+            sts = nf90_def_var(ncid, "rotated_pole", NF90_DOUBLE, rotated_pole_varid)
             sts = nf90_put_att(ncid, rotated_pole_varid, "grid_mapping_name", "rotated_latitude_longitude")
-            sts = nf90_put_att(ncid, rotated_pole_varid, "grid_north_pole_latitude", "39.25")
-            sts = nf90_put_att(ncid, rotated_pole_varid, "grid_north_pole_longitude", "-162.0")
+            sts = nf90_put_att(ncid, rotated_pole_varid, "grid_north_pole_latitude", 39.25)
+            sts = nf90_put_att(ncid, rotated_pole_varid, "grid_north_pole_longitude", -162.0)
 
             ! depends whether height is set in the nml
             IF ( height(ivar) /= -999 ) THEN
-              sts = nf90_def_var(ncid, "height", NF90_DOUBLE, (/ height_dimid /), height_varid)
+              IF (  ( height(ivar) /= 200) .and. ( height(ivar) /= 850 ) .and. ( height(ivar) /= 500 ) ) THEN
+              sts = nf90_def_var(ncid, "height", NF90_DOUBLE, height_varid)
               sts = nf90_put_att(ncid, height_varid, "standard_name", "height")
               sts = nf90_put_att(ncid, height_varid, "long_name", "height")
               sts = nf90_put_att(ncid, height_varid, "units", "m")
               sts = nf90_put_att(ncid, height_varid, "positive", "up")
               sts = nf90_put_att(ncid, height_varid, "axis", "Z")
+              ELSE
+              sts = nf90_def_var(ncid, "plev", NF90_DOUBLE, height_varid)
+              sts = nf90_put_att(ncid, height_varid, "standard_name","air_pressure")
+              sts = nf90_put_att(ncid, height_varid, "long_name", "pressure")
+              sts = nf90_put_att(ncid, height_varid, "units", "Pa")
+              sts = nf90_put_att(ncid, height_varid, "positive", "down")
+              sts = nf90_put_att(ncid, height_varid, "axis", "Z")                 
+              END IF
+
             END IF
 
             !missing: lvl, depends
@@ -924,18 +965,21 @@ DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but o
             sts = nf90_def_var(ncid, "time", NF90_DOUBLE, (/ rec_dimid /), rec_varid)
             sts = nf90_put_att(ncid, rec_varid, "standard_name", "time")
             sts = nf90_put_att(ncid, rec_varid, "long_name", "time")
-            sts = nf90_put_att(ncid, rec_varid, "units", "days since 1949-12-01 00:00:00")
+            sts = nf90_put_att(ncid, rec_varid, "units", "days since 1949-12-01T00:00:00Z")
             sts = nf90_put_att(ncid, rec_varid, "calendar", "standard")
             sts = nf90_put_att(ncid, rec_varid, "axis", "T")
 
             ! for mean variables
             IF ( cell_methods(ivar) == "mean" ) THEN
+            ! Add time bounds to time varaible
+              sts = nf90_put_att(ncid, rec_varid, "bounds", "time_bnds")
+
               sts = nf90_def_var(ncid, "time_bnds", NF90_DOUBLE, (/ nb2_dimid, rec_dimid /), recbnds_varid)
-              sts = nf90_put_att(ncid, recbnds_varid, "standard_name", "time_bnds")
-              sts = nf90_put_att(ncid, recbnds_varid, "long_name", "time_bnds")
-              sts = nf90_put_att(ncid, recbnds_varid, "units", "days since 1949-12-01 00:00:00")
+              sts = nf90_put_att(ncid, recbnds_varid, "standard_name", "time")
+              sts = nf90_put_att(ncid, recbnds_varid, "long_name", "time")
+              sts = nf90_put_att(ncid, recbnds_varid, "units", "days since 1949-12-01T00:00:00Z")
               sts = nf90_put_att(ncid, recbnds_varid, "calendar", "standard")
-              sts = nf90_put_att(ncid, recbnds_varid, "axis", "T")
+!              sts = nf90_put_att(ncid, recbnds_varid, "axis", "T")
             
               print *,'rec_varid', rec_varid
               print *,'recbnds_varid', recbnds_varid
@@ -962,28 +1006,38 @@ DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but o
             sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "references", references)
             sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "tracking_id", trackingID)
             sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "comment", comment)
-            sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "institute_run_id", institute_run_id)
+!            sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "institute_run_id", institute_run_id)
 
             ! always included
-            IF ( height(ivar) /= -999 ) THEN
-              sts = nf90_def_var(ncid, var_cmip(ivar), NF90_FLOAT, (/ lon_dimid, lat_dimid, height_dimid, rec_dimid /), x_varid)
-            ELSE
+!            IF ( height(ivar) /= -999 ) THEN
+!              sts = nf90_def_var(ncid, var_cmip(ivar), NF90_FLOAT, (/ lon_dimid, lat_dimid, height_dimid, rec_dimid /), x_varid)
+!            ELSE
               sts = nf90_def_var(ncid, var_cmip(ivar), NF90_FLOAT, (/ lon_dimid, lat_dimid, rec_dimid /), x_varid)
-            END IF
+!            END IF
             sts = nf90_put_att(ncid, x_varid, "standard_name", standard_name(ivar))
             sts = nf90_put_att(ncid, x_varid, "long_name", long_name(ivar))
             sts = nf90_put_att(ncid, x_varid, "units", units(ivar))
             IF ( positive(ivar) /= '-999' ) THEN
               sts = nf90_put_att(ncid, x_varid, "positive", positive(ivar))
             END IF
-            sts = nf90_put_att(ncid, x_varid, "cell_methods", "time: "//TRIM(cell_methods(ivar)))
-            sts = nf90_put_att(ncid, x_varid, "coordinates", "lon lat")
-            sts = nf90_put_att(ncid, x_varid, "grid_mapping", "Rotated_Pole")
 
-            IF ( height(ivar) == 850 ) THEN
+            sts = nf90_put_att(ncid, x_varid, "cell_methods", "time: "//TRIM(cell_methods(ivar)))
+            IF ( height(ivar) /= -999 ) THEN
+               IF (  ( height(ivar) /= 200) .and. ( height(ivar) /= 850 ) .and. ( height(ivar) /= 500 ) ) THEN
+                  sts = nf90_put_att(ncid, x_varid, "coordinates", "lon lat height")
+               ELSE 
+                  sts = nf90_put_att(ncid, x_varid, "coordinates", "lon lat plev")
+               END IF
+            ELSE
+            sts = nf90_put_att(ncid, x_varid, "coordinates", "lon lat")
+            END IF
+
+            sts = nf90_put_att(ncid, x_varid, "grid_mapping", "rotated_pole")
+
+!            IF ( height(ivar) == 850 ) THEN
               sts = nf90_put_att(ncid, x_varid, "missing_value", 1.e20)
               sts = nf90_put_att(ncid, x_varid, "_FillValue", 1.e20)
-            END IF
+!            END IF
 
             sts = NF90_ENDDEF(ncid)
 
@@ -1038,7 +1092,12 @@ DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but o
 
             ! add height from NML
             IF ( height(ivar) /= -999 ) THEN
-              sts = NF90_PUT_VAR(ncid, height_varid, height(ivar) )
+               IF (  ( height(ivar) /= 200) .and. ( height(ivar) /= 850 ) .and. ( height(ivar) /= 500 ) ) THEN
+                  sts = NF90_PUT_VAR(ncid, height_varid, height(ivar) )
+               ELSE
+                  sts = NF90_PUT_VAR(ncid, height_varid, height(ivar)*100. )
+               END IF
+               
             END IF
 
             sts = NF90_CLOSE(ncid)
@@ -1095,29 +1154,29 @@ DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but o
           !      Here it is done to have a more compact structure, but it could be separated 
           !      in multiple if-blocks for every variable.
 
-          ALLOCATE( pp_in( xfocus, yfocus, 40 ), STAT=sts )
-          ALLOCATE( pb_in( xfocus, yfocus, 40 ), STAT=sts )
-          ALLOCATE( ph_in( xfocus, yfocus, 40 ), STAT=sts )
-          ALLOCATE( phb_in( xfocus, yfocus, 40 ), STAT=sts )
-          ALLOCATE( theta_in( xfocus, yfocus, 40 ), STAT=sts )
-          ALLOCATE( qv_in( xfocus, yfocus, 40  ), STAT=sts )
-          ALLOCATE( qc_in( xfocus, yfocus, 40  ), STAT=sts )
-          ALLOCATE( qi_in( xfocus, yfocus, 40  ), STAT=sts )
-          ALLOCATE( qr_in( xfocus, yfocus, 40  ), STAT=sts )
-          ALLOCATE( qs_in( xfocus, yfocus, 40  ), STAT=sts )
+          ALLOCATE( pp_in( xfocus, yfocus, nz ), STAT=sts )
+          ALLOCATE( pb_in( xfocus, yfocus, nz ), STAT=sts )
+          ALLOCATE( ph_in( xfocus, yfocus, nz+1 ), STAT=sts )
+          ALLOCATE( phb_in( xfocus, yfocus, nz+1 ), STAT=sts )
+          ALLOCATE( theta_in( xfocus, yfocus, nz ), STAT=sts )
+          ALLOCATE( qv_in( xfocus, yfocus, nz  ), STAT=sts )
+          ALLOCATE( qc_in( xfocus, yfocus, nz  ), STAT=sts )
+          ALLOCATE( qi_in( xfocus, yfocus, nz  ), STAT=sts )
+          ALLOCATE( qr_in( xfocus, yfocus, nz  ), STAT=sts )
+          ALLOCATE( qs_in( xfocus, yfocus, nz  ), STAT=sts )
 
-          ALLOCATE( t_in( xfocus, yfocus, 40 ), STAT=sts )
-          ALLOCATE( ph_fl( xfocus, yfocus, 40 ), STAT=sts )
-          ALLOCATE( u_in( xfocus+1, yfocus, 40 ), STAT=sts )
-          ALLOCATE( v_in( xfocus, yfocus+1, 40 ), STAT=sts )
-          ALLOCATE( var3d_in( xfocus, yfocus, 40 ), STAT=sts )
+          ALLOCATE( t_in( xfocus, yfocus, nz ), STAT=sts )
+          ALLOCATE( ph_fl( xfocus, yfocus, nz ), STAT=sts )
+          ALLOCATE( u_in( xfocus+1, yfocus, nz ), STAT=sts )
+          ALLOCATE( v_in( xfocus, yfocus+1, nz ), STAT=sts )
+          ALLOCATE( var3d_in( xfocus, yfocus, nz ), STAT=sts )
 
           ALLOCATE( psl_in ( xfocus, yfocus ), STAT=sts )
           ALLOCATE( t2_in ( xfocus, yfocus ), STAT=sts )          
           
 
-          ALLOCATE( t_p( xfocus, yfocus, 40 ), STAT=sts )
-          ALLOCATE( qvs( xfocus, yfocus, 40 ), STAT=sts )
+          ALLOCATE( t_p( xfocus, yfocus, nz ), STAT=sts )
+          ALLOCATE( qvs( xfocus, yfocus, nz ), STAT=sts )
           ALLOCATE( cape( xfocus, yfocus ), STAT=sts )
           ALLOCATE( cin( xfocus, yfocus ), STAT=sts )
           ALLOCATE( lcl( xfocus, yfocus ), STAT=sts )
@@ -1127,8 +1186,8 @@ DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but o
           ALLOCATE( clwvi( xfocus, yfocus ), STAT=sts )
           ALLOCATE( clivi( xfocus, yfocus ), STAT=sts )
 
-          ALLOCATE( p_in( xfocus, yfocus, 40 ), STAT=sts )
-          ALLOCATE( pp_in( xfocus, yfocus, 40 ), STAT=sts )
+          ALLOCATE( p_in( xfocus, yfocus, nz ), STAT=sts )
+          ALLOCATE( pp_in( xfocus, yfocus, nz ), STAT=sts )
           ALLOCATE( var_pl( xfocus, yfocus, 3 ), STAT=sts )
           ALLOCATE( pout( 3 ), STAT=sts ) 
 
@@ -1160,40 +1219,40 @@ DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but o
             START = (/ xoffset, yoffset, it /), COUNT = (/ xfocus, yfocus, 1 /) )
           
           sts = NF90_GET_VAR(ncidin, pp_varid, pp_in(:,:,:), &
-            START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, 40, 1 /) )          
+            START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, nz, 1 /) )          
 
           sts = NF90_GET_VAR(ncidin, pb_varid, pb_in(:,:,:), &
-            START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, 40, 1 /) )
+            START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, nz, 1 /) )
 
           sts = NF90_GET_VAR(ncidin, ph_varid, ph_in(:,:,:), &
-            START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, 40, 1 /) )
+            START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, nz+1, 1 /) )
 
           sts = NF90_GET_VAR(ncidin, phb_varid, phb_in(:,:,:), &
-            START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, 40, 1 /) )
+            START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, nz+1, 1 /) )
 
           sts = NF90_GET_VAR(ncidin, theta_varid, theta_in(:,:,:), &
-            START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, 40, 1 /) )
+            START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, nz, 1 /) )
 
           sts = NF90_GET_VAR(ncidin, qv_varid, qv_in(:,:,:), &
-            START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, 40, 1 /) )
+            START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, nz, 1 /) )
 
           sts = NF90_GET_VAR(ncidin, qc_varid, qc_in(:,:,:), &
-            START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, 40, 1 /) )
+            START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, nz, 1 /) )
 
           sts = NF90_GET_VAR(ncidin, qi_varid, qi_in(:,:,:), &
-            START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, 40, 1 /) )
+            START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, nz, 1 /) )
 
           sts = NF90_GET_VAR(ncidin, qr_varid, qr_in(:,:,:), &
-            START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, 40, 1 /) )
+            START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, nz, 1 /) )
 
           sts = NF90_GET_VAR(ncidin, qs_varid, qs_in(:,:,:), &
-            START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, 40, 1 /) )          
+            START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, nz, 1 /) )          
 
           sts = NF90_GET_VAR(ncidin, u_varid, u_in(:,:,:), &
-            START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus+1, yfocus, 40, 1 /) )
+            START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus+1, yfocus, nz, 1 /) )
 
           sts = NF90_GET_VAR(ncidin, v_varid, v_in(:,:,:), &
-            START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus+1, 40, 1 /) )
+            START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus+1, nz, 1 /) )
           
           sts = NF90_GET_VAR(ncidin, sinalpha_varid, sinalpha_in(:,:), &
             START = (/ xoffset, yoffset, it /), COUNT = (/ xfocus, yfocus, 1 /) )
@@ -1208,12 +1267,12 @@ DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but o
 
         ELSE IF (var_cmip(ivar) == "clt") THEN
 
-          ALLOCATE( cldfra_in( xfocus, yfocus, 40 ), STAT=sts )     
+          ALLOCATE( cldfra_in( xfocus, yfocus, nz ), STAT=sts )     
 
           sts = NF90_INQ_VARID(ncidin, "CLDFRA", varid)
  
           sts = NF90_GET_VAR(ncidin, varid, cldfra_in(:,:,:), &
-            START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, 40, 1 /) )
+            START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, nz, 1 /) )
   
 
         ELSE IF (var_cmip(ivar) == "pr") THEN 
@@ -1410,13 +1469,19 @@ DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but o
         IF ( (var_cmip(ivar) == "psl") .or. (height(ivar) == 850) &
               .or.(height(ivar) == 500) .or. (height(ivar) == 200)) THEN
 
-          DO nl = 1,40-1
+          DO nl = 1,nz
             ph_fl(:,:,nl) = ((ph_in(:,:,nl)+phb_in(:,:,nl))+(ph_in(:,:,nl+1)+phb_in(:,:,nl+1)))/2./9.81
           END DO
 
           t_in(:,:,:) = (theta_in(:,:,:)+300.)*((pp_in(:,:,:)+pb_in(:,:,:))/100000.)**(287./1004.)
+           
+          IF  (var_cmip(ivar) == "psl") THEN
 
           psl_in(:,:) = (pp_in(:,:,1)+pb_in(:,:,1))*((t_in(:,:,1)*(1.+0.61*qv_in(:,:,1))+0.0065*ph_fl(:,:,1))/(t_in(:,:,1)*(1+0.61*qv_in(:,:,1))))**(9.81/(287.*0.0065))
+
+          data_in(:,:)=psl_in(:,:)
+          
+          ELSE
 
           pout = (/ 85000.,50000.,20000. /)
 
@@ -1461,7 +1526,7 @@ DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but o
 
           DO i = 1,xfocus 
             DO j = 1,yfocus
-              DO nl = 1,40 - 1
+              DO nl = 1,nz - 1
                 IF (pout(np).lt.p_in(i,j,nl) .and. pout(np).gt.p_in(i,j,nl+1)) then
                 
                   slope = (var3d_in(i,j,nl)-var3d_in(i,j,nl+1))/ (p_in(i,j,nl)-p_in(i,j,nl+1))
@@ -1475,6 +1540,8 @@ DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but o
 
           data_in(:,:) = var_pl(:,:,np)
 
+          END IF
+
         END IF
 
 
@@ -1487,7 +1554,7 @@ DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but o
 
           prw(:,:) = 0.
 
-          DO nl = 1,40 - 1
+          DO nl = 1,nz
 
             prw(:,:) = prw(:,:) + qv_in(:,:,nl) * p_in(:,:,nl)/(R*t_in(:,:,nl)) * ((ph_in(:,:,nl+1)+phb_in(:,:,nl+1)) - (ph_in(:,:,nl)+phb_in(:,:,nl)))/9.81
 
@@ -1505,7 +1572,7 @@ DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but o
 
           clwvi(:,:) = 0.
 
-          DO nl = 1,40 - 1
+          DO nl = 1,nz
 
             clwvi(:,:) = clwvi(:,:) + (qc_in(:,:,nl) + qi_in(:,:,nl) + qr_in(:,:,nl) + qs_in(:,:,nl) ) * p_in(:,:,nl)/(R*t_in(:,:,nl)) * ((ph_in(:,:,nl+1)+phb_in(:,:,nl+1)) - (ph_in(:,:,nl)+phb_in(:,:,nl)))/9.81
             
@@ -1523,7 +1590,7 @@ DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but o
 
           clivi(:,:) = 0.
 
-          DO nl = 1,40 - 1
+          DO nl = 1,nz
 
             clivi(:,:) = clivi(:,:) + (qi_in(:,:,nl) + qs_in(:,:,nl)) * p_in(:,:,nl)/(R*t_in(:,:,nl)) * ((ph_in(:,:,nl+1)+phb_in(:,:,nl+1)) - (ph_in(:,:,nl)+phb_in(:,:,nl)))/9.81
             
@@ -1551,7 +1618,7 @@ DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but o
 
           DO i = 1,xfocus
             DO j = 1,yfocus
-              DO nl = 1,40-1
+              DO nl = 1,nz-1
 
                 qvs(i,j,nl) = 0.622*a*exp(b*(t_p(i,j,nl)-c)/(t_p(i,j,nl)-d))/p_in(i,j,nl)
 
@@ -1629,7 +1696,7 @@ DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but o
             DO j = 1,yfocus
               IF (maxval(cldfra_in(i,j,:)) .lt. 0.99) THEN
                 cldfra_inv(i,j) = 1.
-                DO nl = 2,40
+                DO nl = 2,nz
                   cldfra_inv(i,j) = cldfra_inv(i,j)*(1- max(cldfra_in(i,j,nl),cldfra_in(i,j,nl-1))/(1-cldfra_in(i,j,nl-1))) !unit [%] 
                 END DO
               ELSE 
@@ -1740,8 +1807,8 @@ DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but o
 !       ***mrso***
         IF (var_cmip(ivar) == "mrso") THEN
 
-          data_in(:,:) = ((smois_in(:,:,1,1)*0.1 + smois_in(:,:,2,1)*0.3 + smois_in(:,:,3,1)*0.6 + smois_in(:,:,4,1)*1.0 ) + &
-                         (smois_in(:,:,1,2)*0.1 + smois_in(:,:,2,2)*0.3 + smois_in(:,:,3,2)*0.6 + smois_in(:,:,4,2)*1.0 ))/2.*1000. 
+          data_in(:,:) = (((smois_in(:,:,1,1)*0.1 + smois_in(:,:,2,1)*0.3 + smois_in(:,:,3,1)*0.6 + smois_in(:,:,4,1)*1.0 ) + &
+                         (smois_in(:,:,1,2)*0.1 + smois_in(:,:,2,2)*0.3 + smois_in(:,:,3,2)*0.6 + smois_in(:,:,4,2)*1.0 ))/2.)*1000. 
 
         END IF
 
@@ -1781,13 +1848,13 @@ DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but o
         print *, 'counter', counter
         print *, 'xfocus', xfocus
         print *, 'yfocus', yfocus
-        IF ( height(ivar) /= -999 ) THEN
-          sts = NF90_PUT_VAR( ncid, x_varid, data_in(:,:),  &
-            START=(/ 1, 1, 1, counter /), COUNT = (/ xfocus, yfocus, 1, 1 /) )
-        ELSE
+!        IF ( height(ivar) /= -999 ) THEN
+!          sts = NF90_PUT_VAR( ncid, x_varid, data_in(:,:),  &
+!            START=(/ 1, 1, 1, counter /), COUNT = (/ xfocus, yfocus, 1, 1 /) )
+!        ELSE
           sts = NF90_PUT_VAR( ncid, x_varid, data_in(:,:),  &
             START=(/ 1, 1, counter /), COUNT = (/ xfocus, yfocus, 1 /) )
-        END IF
+!        END IF
 
         print *,'NF90_PUT_VAR', sts
         print *, 'ncid', ncid
@@ -1824,7 +1891,11 @@ DO varnml = 9, 9, 1 !loop over different var namelists (not best solution, but o
 
   END DO !nvars - variable loop
 
-END DO !ifrq - different temporal aggregations
+ END DO ! nvarnml - namelist loop
+
+!END DO !ifrq - different temporal aggregations
+
+
 
 !===============================================================================
 
@@ -1889,9 +1960,12 @@ INTEGER :: i, j, k, l, counter
 REAL :: dtDecDay
 INTEGER :: tstotYYYY, tstotMM, tstotDD, tstotHH
 INTEGER :: tetotYYYY, tetotMM, tetotDD, tetotHH
-!!!INTEGER :: ndpy
+!INTEGER :: temp_tstotYYYY ! Temporary variable to start from December of the
+!previous year than tstotYYYY. NOT HARDCODED TO 1949 ANYMORE)
 INTEGER, DIMENSION(12) :: ndpm
-INTEGER :: ndOverall = 31 ! these are the 31 days of Dec 1949
+INTEGER :: ndOverall = 31 ! these are the 31 days of Dec 1949 (Now works for any
+!December )
+!INTEGER :: ndOverall = 0
 INTEGER :: ntspd ! number of timesteps per time-interval
 
 PRINT *, "CreateRefTimeArray"
@@ -1901,6 +1975,9 @@ SELECT CASE (dt)
 CASE ('3hr')
   dtDecDay = 0.125
   ntspd = 1.0 / dtDecDay
+CASE ('6hr')
+  dtDecDay = 1.0 / 6.0
+  ntspd = 1.0 / dtDecDay
 CASE ('1hr')
   dtDecDay = 1.0 / 24.0
   ntspd = 1.0 / dtDecDay
@@ -1909,12 +1986,17 @@ CASE DEFAULT
   STOP
 END SELECT
 
-! "tstot" contains the absolute starting point, 1949-12-01_00:00:00
+! "tstot" contains the absolute starting point, 1949-12-01_00:00:00 (Changes to
+! work for 12-01_00:00:00 of any other year)
 READ( tstot, '(I4,1X,I2,1X,I2,1X,I2)' ) tstotYYYY, tstotMM, tstotDD, tstotHH
 READ( tetot, '(I4,1X,I2,1X,I2,1X,I2)' ) tetotYYYY, tetotMM, tetotDD, tetotHH
 
+! one year before  "tstot"
+!temp_tstotYYYY =  tstotYYYY - 1
+
 ! get the overall number of days within the considered timespan
 DO i=tstotYYYY+1,tetotYYYY,1
+!DO i=temp_tstotYYYY+1,tetotYYYY,1
   ndOverall = ndOverall + CheckForLeapyear( i )
 END DO
 !PRINT *, "number of days, overall = ", ndOverall
@@ -1930,7 +2012,7 @@ END DO
 
 ! handle the Dec 1949, too complicated to have this in the upcoming loop
 ! overall start is at 1949-12-01_00:00:00
-TimeRefArray( 1:31*ntspd, 2 ) = 1949.
+TimeRefArray( 1:31*ntspd, 2 ) = 1949
 TimeRefArray( 1:31*ntspd, 3 ) = 12.
 
 
@@ -1942,6 +2024,7 @@ print*, "(/ (j, j=0, 24-24/ntspd , 24/ntspd) /)", (/ (j, j=0, 24-24/ntspd , 24/n
 ! add the rest of the Y M D H information
 counter = 1
 DO i=tstotYYYY+1,tetotYYYY,1
+!DO i=temp_tstotYYYY+1,tetotYYYY,1
   IF ( CheckForLeapyear( i ) == 366 ) THEN
     ndpm = (/31,29,31,30,31,30,31,31,30,31,30,31/)
   ELSE
@@ -1956,10 +2039,11 @@ DO i=tstotYYYY+1,tetotYYYY,1
 !      TimeRefArray( 31*24/ntspd + counter*ntspd-(ntspd-1) : 31*24/ntspd + counter*ntspd , 4) = k
 !      TimeRefArray( 31*24/ntspd + counter*ntspd-(ntspd-1) : 31*24/ntspd + counter*ntspd , 5) = (/(l, l=0, 24-24/ntspd , 24/ntspd) /)
 
-      TimeRefArray( 31*ntspd + counter*ntspd-(ntspd-1) : 31*ntspd + counter*ntspd , 2) = i
-      TimeRefArray( 31*ntspd + counter*ntspd-(ntspd-1) : 31*ntspd + counter*ntspd , 3) = j
-      TimeRefArray( 31*ntspd + counter*ntspd-(ntspd-1) : 31*ntspd + counter*ntspd , 4) = k
-      TimeRefArray( 31*ntspd + counter*ntspd-(ntspd-1) : 31*ntspd + counter*ntspd , 5) = (/(l, l=0, 24-24/ntspd , 24/ntspd) /)
+       TimeRefArray( 31*ntspd + counter*ntspd-(ntspd-1) : 31*ntspd + counter*ntspd , 2) = i
+       TimeRefArray( 31*ntspd + counter*ntspd-(ntspd-1) : 31*ntspd + counter*ntspd , 3) = j
+       TimeRefArray( 31*ntspd + counter*ntspd-(ntspd-1) : 31*ntspd + counter*ntspd , 4) = k
+       TimeRefArray( 31*ntspd + counter*ntspd-(ntspd-1) : 31*ntspd + counter*ntspd , 5) = (/(l, l=0, 24-24/ntspd , 24/ntspd) /)
+
 
       counter = counter + 1
 
@@ -1990,3 +2074,4 @@ CONTAINS
   END FUNCTION CheckForLeapyear
 
 END SUBROUTINE CreateRefTimeArray
+
