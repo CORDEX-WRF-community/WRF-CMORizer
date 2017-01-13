@@ -299,6 +299,15 @@ INTERFACE
     CHARACTER (LEN = 3), INTENT(IN) :: dt
   END SUBROUTINE CreateRefTimeArray
 
+! (het) modified calculation of mean sea level pressure adopted from wrf_interp.F90	
+	SUBROUTINE calcslp(slp,pres,qv,tk1,ght,nz,ns,ew,T00)
+    IMPLICIT NONE
+		INTEGER, INTENT(IN) :: nz,ns,ew
+		REAL, DIMENSION(:,:), INTENT(INOUT) :: slp
+		REAL, DIMENSION(:,:,:), INTENT(IN) :: pres,qv,tk1,ght
+		REAL, INTENT(IN)		:: T00
+	END SUBROUTINE
+
 END INTERFACE
 
 !===============================================================================
@@ -352,8 +361,25 @@ REAL, DIMENSION(:,:,:), ALLOCATABLE :: pp_in, pb_in, ph_in, phb_in, qv_in, qvs, 
   u_in, v_in, var3d_in, var_pl, potevp_in, &
   rainnc_in, rainc_in, rad_in, t_p, snownc_in, acsnom_in, GeoInLonLat, &
   sfcevp_in, sfroff_in, udroff_in
+
+! (het): bucket system
+INTEGER, DIMENSION(:,:,:), ALLOCATABLE :: i_rainnc_in, i_rainc_in, i_rad_in
+REAL :: bucket_mm, bucket_J
+
 REAL, DIMENSION(:,:,:,:), ALLOCATABLE :: smois_in
 REAL, DIMENSION(:), ALLOCATABLE :: GeoInRLat, GeoInRLon, pout
+
+! (het): base state temperature is made flexible in newer versions of WRF. The
+! actual value is stored in variable T00
+! also the base state pressure (P00) is kept flexible now.
+REAL, DIMENSION(1) :: T00, P00
+INTEGER :: t00_varid, p00_varid
+
+! (het): variable for adopted vertical interpolation
+REAL :: zg_pout
+
+! (het): soil layer thickness may vary from simulation to simulation
+REAL, DIMENSION(:), ALLOCATABLE :: DZS
 
 ! (het): meta information about the geographic projection used (coordinates of the rotated pole)
 REAL :: GeoNPLat, GeoNPLon
@@ -515,9 +541,11 @@ frequency(7) = "1hr"
 ALLOCATE ( fnNMLvar(9) )
 fnNMLvar(1) = "runctrl.vars.nml"
 fnNMLvar(2) = "runctrl.vars.nml_pr_mrso"
-fnNMLvar(3) = "runctrl.vars.nml_snow"
+fnNMLvar(5) = "runctrl.vars.nml_snow"
 fnNMLvar(4) = "runctrl.vars.nml_cape"
-fnNMLvar(5) = "runctrl.vars.nml_radiation_alternative"
+!fnNMLvar(1) = "runctrl.vars.nml_radiation"
+!fnNMLvar(1) = "runctrl.vars.nml_weathertyping"
+fnNMLvar(3) = "runctrl.vars.nml_psl"
 fnNMLvar(6) = "runctrl.vars.nml_evp_roff"
 fnNMLvar(7) = "runctrl.vars.nml_water_column"
 fnNMLvar(8) = "runctrl.vars.nml_vars_on_plevels"
@@ -566,8 +594,8 @@ tmpfileFL = "tmpfileFL"
 
 !PRINT *, "filelist search pattern = ", TRIM(DirInputSimResRoot) // "/" // TRIM(domain) // "/" // "*/*wrfout*nc"
 !CALL SYSTEM("ls -1 " // TRIM(DirInputSimResRoot) // "/" // TRIM(domain) // "/*/*wrfout*{" // ts // ".." // te // "}*nc > " // tmpfileFL)
-PRINT *, "filelist search pattern = ", TRIM(DirInputSimResRoot) // "/wrfout*" // TRIM(domain) // "*"
-CALL SYSTEM("ls -1 " // TRIM(DirInputSimResRoot) // "/wrfout*" // TRIM(domain) // "* > " // tmpfileFL)
+PRINT *, "filelist search pattern = ", TRIM(DirInputSimResRoot) // "/*wrfout*" // TRIM(domain) // "*"
+CALL SYSTEM("ls -1 " // TRIM(DirInputSimResRoot) // "/*wrfout*" // TRIM(domain) // "* > " // tmpfileFL)
 ft = 0
 CALL generateFilelist
 
@@ -643,6 +671,10 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
     nvar_nml = 1
   CASE ("runctrl.vars.nml_pr_tas_1hr_test")
     nvar_nml = 3
+  CASE ("runctrl.vars.nml_weathertyping")
+    nvar_nml = 6
+  CASE ("runctrl.vars.nml_psl")
+    nvar_nml = 1
   END SELECT
 
   print*, "nvar_nml", nvar_nml
@@ -1103,8 +1135,29 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
 
         sts = NF90_OPEN(iflWRFin, NF90_NOWRITE, ncidin)
 
+! (het): read actual value of base state temperature T00
+        sts = NF90_INQ_VARID(ncidin, "T00", t00_varid)
+        IF ( sts /= NF90_NOERR ) THEN
+          T00(1) = 300.0
+        ELSE
+          sts = NF90_GET_VAR(ncidin, t00_varid, T00(:), &
+            START = (/ it /), COUNT = (/ 1 /) )
+        END IF
+
+! (het): use actual value of base state pressure P00, if possible
+        sts = NF90_INQ_VARID(ncidin, "P00", p00_varid)
+        IF ( sts /= NF90_NOERR ) THEN
+          P00(1) = 100000.
+        ELSE
+          sts = NF90_GET_VAR(ncidin, p00_varid, P00(:), &
+            START = (/ it /), COUNT = (/ 1 /) )
+        END IF
+
+
         IF ( (var_cmip(ivar) == "psl") .or. (height(ivar) == 850) &
               .or.(height(ivar) == 500) .or. (height(ivar) == 200) &
+! (het): don't forget the 700 hPa level
+							.or. (height(ivar) == 700) &
               .or. (var_cmip(ivar) == "prw") .or. (var_cmip(ivar) == "clwvi") &
               .or. (var_cmip(ivar) == "clivi") &
               .or. (var_cmip(ivar) == "cape")) THEN
@@ -1115,45 +1168,53 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
 					
 					! (het): I've changed the hard coded '40' levels to nz levels given by the nml-file
 
-          ALLOCATE( pp_in( xfocus, yfocus, nz ), STAT=sts )
-          ALLOCATE( pb_in( xfocus, yfocus, nz ), STAT=sts )
-          ALLOCATE( ph_in( xfocus, yfocus, nz ), STAT=sts )
-          ALLOCATE( phb_in( xfocus, yfocus, nz ), STAT=sts )
-          ALLOCATE( theta_in( xfocus, yfocus, nz ), STAT=sts )
-          ALLOCATE( qv_in( xfocus, yfocus, nz  ), STAT=sts )
-          ALLOCATE( qc_in( xfocus, yfocus, nz  ), STAT=sts )
-          ALLOCATE( qi_in( xfocus, yfocus, nz  ), STAT=sts )
-          ALLOCATE( qr_in( xfocus, yfocus, nz  ), STAT=sts )
-          ALLOCATE( qs_in( xfocus, yfocus, nz  ), STAT=sts )
+! (het) PH and PHB have "bottom_top_stag" levels, which are nz+1 
+!          ALLOCATE( ph_in( xfocus, yfocus, nz ), STAT=sts )
+!          ALLOCATE( phb_in( xfocus, yfocus, nz ), STAT=sts )
+! (het) IF (.not. ALLOCATED) commands added, in order to avoid memory problems 
+!       when long-term simulations are converted to ESGF format
+          IF (.not. ALLOCATED(pp_in)) ALLOCATE( pp_in( xfocus, yfocus, nz ), STAT=sts )
+          IF (.not. ALLOCATED(pb_in)) ALLOCATE( pb_in( xfocus, yfocus, nz ), STAT=sts )
+          IF (.not. ALLOCATED(ph_in)) ALLOCATE( ph_in( xfocus, yfocus, nz+1 ), STAT=sts )
+          IF (.not. ALLOCATED(phb_in)) ALLOCATE( phb_in( xfocus, yfocus, nz+1 ), STAT=sts )
+          IF (.not. ALLOCATED(theta_in)) ALLOCATE( theta_in( xfocus, yfocus, nz ), STAT=sts )
+          IF (.not. ALLOCATED(qv_in)) ALLOCATE( qv_in( xfocus, yfocus, nz  ), STAT=sts )
+          IF (.not. ALLOCATED(qc_in)) ALLOCATE( qc_in( xfocus, yfocus, nz  ), STAT=sts )
+          IF (.not. ALLOCATED(qi_in)) ALLOCATE( qi_in( xfocus, yfocus, nz  ), STAT=sts )
+          IF (.not. ALLOCATED(qr_in)) ALLOCATE( qr_in( xfocus, yfocus, nz  ), STAT=sts )
+          IF (.not. ALLOCATED(qs_in)) ALLOCATE( qs_in( xfocus, yfocus, nz  ), STAT=sts )
 
-          ALLOCATE( t_in( xfocus, yfocus, nz ), STAT=sts )
-          ALLOCATE( ph_fl( xfocus, yfocus, nz ), STAT=sts )
-          ALLOCATE( u_in( xfocus+1, yfocus, nz ), STAT=sts )
-          ALLOCATE( v_in( xfocus, yfocus+1, nz ), STAT=sts )
-          ALLOCATE( var3d_in( xfocus, yfocus, nz ), STAT=sts )
+          IF (.not. ALLOCATED(t_in)) ALLOCATE( t_in( xfocus, yfocus, nz ), STAT=sts )
+          IF (.not. ALLOCATED(ph_fl)) ALLOCATE( ph_fl( xfocus, yfocus, nz ), STAT=sts )
+          IF (.not. ALLOCATED(u_in)) ALLOCATE( u_in( xfocus+1, yfocus, nz ), STAT=sts )
+          IF (.not. ALLOCATED(v_in)) ALLOCATE( v_in( xfocus, yfocus+1, nz ), STAT=sts )
+          IF (.not. ALLOCATED(var3d_in)) ALLOCATE( var3d_in( xfocus, yfocus, nz ), STAT=sts )
 
-          ALLOCATE( psl_in ( xfocus, yfocus ), STAT=sts )
-          ALLOCATE( t2_in ( xfocus, yfocus ), STAT=sts )          
+          IF (.not. ALLOCATED(psl_in)) ALLOCATE( psl_in ( xfocus, yfocus ), STAT=sts )
+          IF (.not. ALLOCATED(t2_in)) ALLOCATE( t2_in ( xfocus, yfocus ), STAT=sts )          
           
 
-          ALLOCATE( t_p( xfocus, yfocus, nz ), STAT=sts )
-          ALLOCATE( qvs( xfocus, yfocus, nz ), STAT=sts )
-          ALLOCATE( cape( xfocus, yfocus ), STAT=sts )
-          ALLOCATE( cin( xfocus, yfocus ), STAT=sts )
-          ALLOCATE( lcl( xfocus, yfocus ), STAT=sts )
-          ALLOCATE( lfc( xfocus, yfocus ), STAT=sts )
+          IF (.not. ALLOCATED(t_p)) ALLOCATE( t_p( xfocus, yfocus, nz ), STAT=sts )
+          IF (.not. ALLOCATED(qvs)) ALLOCATE( qvs( xfocus, yfocus, nz ), STAT=sts )
+          IF (.not. ALLOCATED(cape)) ALLOCATE( cape( xfocus, yfocus ), STAT=sts )
+          IF (.not. ALLOCATED(cin)) ALLOCATE( cin( xfocus, yfocus ), STAT=sts )
+          IF (.not. ALLOCATED(lcl)) ALLOCATE( lcl( xfocus, yfocus ), STAT=sts )
+          IF (.not. ALLOCATED(lfc)) ALLOCATE( lfc( xfocus, yfocus ), STAT=sts )
 
-          ALLOCATE( prw( xfocus, yfocus ), STAT=sts )
-          ALLOCATE( clwvi( xfocus, yfocus ), STAT=sts )
-          ALLOCATE( clivi( xfocus, yfocus ), STAT=sts )
+          IF (.not. ALLOCATED(prw)) ALLOCATE( prw( xfocus, yfocus ), STAT=sts )
+          IF (.not. ALLOCATED(clwvi)) ALLOCATE( clwvi( xfocus, yfocus ), STAT=sts )
+          IF (.not. ALLOCATED(clivi)) ALLOCATE( clivi( xfocus, yfocus ), STAT=sts )
 
-          ALLOCATE( p_in( xfocus, yfocus, nz ), STAT=sts )
-          ALLOCATE( pp_in( xfocus, yfocus, nz ), STAT=sts )
-          ALLOCATE( var_pl( xfocus, yfocus, 3 ), STAT=sts )
-          ALLOCATE( pout( 3 ), STAT=sts ) 
+          IF (.not. ALLOCATED(p_in)) ALLOCATE( p_in( xfocus, yfocus, nz ), STAT=sts )
+! (het) pp_in is already allocated
+!          ALLOCATE( pp_in( xfocus, yfocus, nz ), STAT=sts )
+! (het) cahnged to 4 pressure levels
+!          ALLOCATE( var_pl( xfocus, yfocus, 3 ), STAT=sts )
+          IF (.not. ALLOCATED(var_pl)) ALLOCATE( var_pl( xfocus, yfocus, 4 ), STAT=sts )
+          IF (.not. ALLOCATED(pout)) ALLOCATE( pout( 4 ), STAT=sts ) 
 
-          ALLOCATE( sinalpha_in( xfocus, yfocus ), STAT=sts )
-          ALLOCATE( cosalpha_in( xfocus, yfocus ), STAT=sts )
+          IF (.not. ALLOCATED(sinalpha_in)) ALLOCATE( sinalpha_in( xfocus, yfocus ), STAT=sts )
+          IF (.not. ALLOCATED(cosalpha_in)) ALLOCATE( cosalpha_in( xfocus, yfocus ), STAT=sts )
 
 
           print *,'read 3D vars'
@@ -1228,7 +1289,7 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
 
         ELSE IF (var_cmip(ivar) == "clt") THEN
 
-          ALLOCATE( cldfra_in( xfocus, yfocus, nz ), STAT=sts )     
+          IF (.not. ALLOCATED(cldfra_in)) ALLOCATE( cldfra_in( xfocus, yfocus, nz ), STAT=sts )     
 
           sts = NF90_INQ_VARID(ncidin, "CLDFRA", varid)
  
@@ -1238,8 +1299,8 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
 
         ELSE IF (var_cmip(ivar) == "pr") THEN 
 
-          ALLOCATE( rainnc_in ( xfocus, yfocus, 2 ), STAT=sts )
-          ALLOCATE( rainc_in ( xfocus, yfocus, 2 ), STAT=sts )
+          IF (.not. ALLOCATED(rainnc_in)) ALLOCATE( rainnc_in ( xfocus, yfocus, 2 ), STAT=sts )
+          IF (.not. ALLOCATED(rainc_in)) ALLOCATE( rainc_in ( xfocus, yfocus, 2 ), STAT=sts )
 
           sts = NF90_INQ_VARID(ncidin, "RAINNC", rainnc_varid)
           sts = NF90_INQ_VARID(ncidin, "RAINC", rainc_varid)
@@ -1249,21 +1310,48 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
 
           sts = NF90_GET_VAR(ncidin, rainc_varid, rainc_in(:,:,:), &
             START = (/ xoffset, yoffset, it /), COUNT = (/ xfocus, yfocus, 2 /) )
-
+						
+					sts = NF90_GET_ATT(ncidin, NF90_GLOBAL, "BUCKET_MM", bucket_mm)
+					
+! (het) check out for bucket system
+					IF ( bucket_mm > 0. ) THEN
+						
+          	IF (.not. ALLOCATED(i_rainnc_in)) ALLOCATE( i_rainnc_in ( xfocus, yfocus, 2 ), STAT=sts )
+          	IF (.not. ALLOCATED(i_rainc_in)) ALLOCATE( i_rainc_in ( xfocus, yfocus, 2 ), STAT=sts )
+						
+          	sts = NF90_INQ_VARID(ncidin, "I_RAINNC", varid)
+          	sts = NF90_GET_VAR(ncidin, varid, i_rainnc_in(:,:,:), &
+            	START = (/ xoffset, yoffset, it /), COUNT = (/ xfocus, yfocus, 2 /) )   !read two timesteps to calculate 3hr sum
+						
+          	sts = NF90_INQ_VARID(ncidin, "I_RAINC", varid)
+          	sts = NF90_GET_VAR(ncidin, varid, i_rainc_in(:,:,:), &
+            	START = (/ xoffset, yoffset, it /), COUNT = (/ xfocus, yfocus, 2 /) )   !read two timesteps to calculate 3hr sum
+						
+					END IF
 
         ELSE IF (var_cmip(ivar) == "prc") THEN
 
-          ALLOCATE( rainc_in ( xfocus, yfocus, 2 ), STAT=sts )
+          IF (.not. ALLOCATED(rainc_in)) ALLOCATE( rainc_in ( xfocus, yfocus, 2 ), STAT=sts )
 
           sts = NF90_INQ_VARID(ncidin, "RAINC", rainc_varid)
 
           sts = NF90_GET_VAR(ncidin, rainc_varid, rainc_in(:,:,:), &
             START = (/ xoffset, yoffset, it /), COUNT = (/ xfocus, yfocus, 2 /) )
 
+! (het) check out for bucket system
+					IF ( bucket_mm > 0. ) THEN
+						
+          	IF (.not. ALLOCATED(i_rainc_in)) ALLOCATE( i_rainc_in ( xfocus, yfocus, 2 ), STAT=sts )
+						
+          	sts = NF90_INQ_VARID(ncidin, "I_RAINC", varid)
+          	sts = NF90_GET_VAR(ncidin, varid, i_rainc_in(:,:,:), &
+            	START = (/ xoffset, yoffset, it /), COUNT = (/ xfocus, yfocus, 2 /) )   !read two timesteps to calculate 3hr sum
+						
+					END IF
 
         ELSE IF (var_cmip(ivar) == "prsn") THEN
 
-          ALLOCATE( snownc_in ( xfocus, yfocus, 2 ), STAT=sts )
+          IF (.not. ALLOCATED(snownc_in)) ALLOCATE( snownc_in ( xfocus, yfocus, 2 ), STAT=sts )
           
           sts = NF90_INQ_VARID(ncidin, "SNOWNC", snownc_varid)
 
@@ -1273,7 +1361,7 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
 
         ELSE IF (var_cmip(ivar) == "snm") THEN
 
-          ALLOCATE( acsnom_in ( xfocus, yfocus, 2 ), STAT=sts )
+          IF (.not. ALLOCATED(acsnom_in)) ALLOCATE( acsnom_in ( xfocus, yfocus, 2 ), STAT=sts )
 
           sts = NF90_INQ_VARID(ncidin, "ACSNOM", acsnom_varid)
 
@@ -1284,7 +1372,7 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
 
         ELSE IF (var_cmip(ivar) == "evspsbl") THEN
 
-          ALLOCATE( sfcevp_in ( xfocus, yfocus, 2 ), STAT=sts )
+          IF (.not. ALLOCATED(sfcevp_in)) ALLOCATE( sfcevp_in ( xfocus, yfocus, 2 ), STAT=sts )
 
           sts = NF90_INQ_VARID(ncidin, "SFCEVP", sfcevp_varid)
 
@@ -1293,7 +1381,7 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
 
         ELSE IF (var_cmip(ivar) == "evspsblpot") THEN
 
-          ALLOCATE( potevp_in ( xfocus, yfocus, 2 ), STAT=sts )
+          IF (.not. ALLOCATED(potevp_in)) ALLOCATE( potevp_in ( xfocus, yfocus, 2 ), STAT=sts )
 
           sts = NF90_INQ_VARID(ncidin, "POTEVP", potevp_varid)
 
@@ -1303,7 +1391,7 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
 
         ELSE IF (var_cmip(ivar) == "mrros") THEN
 
-          ALLOCATE( sfroff_in ( xfocus, yfocus, 2 ), STAT=sts )
+          IF (.not. ALLOCATED(sfroff_in)) ALLOCATE( sfroff_in ( xfocus, yfocus, 2 ), STAT=sts )
 
           sts = NF90_INQ_VARID(ncidin, "SFROFF", sfroff_varid)
 
@@ -1312,8 +1400,8 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
 
         ELSE IF (var_cmip(ivar) == "mrro") THEN
 
-          ALLOCATE( sfroff_in ( xfocus, yfocus, 2 ), STAT=sts )
-          ALLOCATE( udroff_in ( xfocus, yfocus, 2 ), STAT=sts )
+          IF (.not. ALLOCATED(sfroff_in)) ALLOCATE( sfroff_in ( xfocus, yfocus, 2 ), STAT=sts )
+          IF (.not. ALLOCATED(udroff_in)) ALLOCATE( udroff_in ( xfocus, yfocus, 2 ), STAT=sts )
 
           sts = NF90_INQ_VARID(ncidin, "SFROFF", sfroff_varid)
           sts = NF90_INQ_VARID(ncidin, "UDROFF", udroff_varid)
@@ -1332,12 +1420,37 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
              .or. (var_cmip(ivar) == "rsdt") .or. (var_cmip(ivar) == "rsut") &
              .or. (var_cmip(ivar) == "hfss") .or. (var_cmip(ivar) == "hfls")) THEN
 
-          ALLOCATE( rad_in ( xfocus, yfocus, 2 ), STAT=sts )
+          IF (.not. ALLOCATED(rad_in)) ALLOCATE( rad_in ( xfocus, yfocus, 2 ), STAT=sts )
 
-          sts = NF90_INQ_VARID(ncidin, TRIM(var_wrf(ivar)), varid)
+! (het) bucket system?
 
-          sts = NF90_GET_VAR(ncidin, varid, rad_in(:,:,:), &
-            START = (/ xoffset, yoffset, it /), COUNT = (/ xfocus, yfocus, 2 /) )
+					sts = NF90_GET_ATT(ncidin, NF90_GLOBAL, "BUCKET_J", bucket_J)
+					
+					IF ( bucket_J > 0. ) THEN
+					
+          	IF (TRIM(fnNMLvar(varnml)) == "runctrl.vars.nml_radiation_alternative") STOP 'bucket_J AND runctrl.vars.nml_radiation_alternative not implemented yet'
+
+						IF (.not. ALLOCATED(i_rad_in)) ALLOCATE( i_rad_in ( xfocus, yfocus, 2 ), STAT=sts )
+						
+          	sts = NF90_INQ_VARID(ncidin, TRIM(var_wrf(ivar)), varid)
+
+          	sts = NF90_GET_VAR(ncidin, varid, rad_in(:,:,:), &
+            	START = (/ xoffset, yoffset, it /), COUNT = (/ xfocus, yfocus, 2 /) )
+
+          	sts = NF90_INQ_VARID(ncidin, TRIM('I_' // var_wrf(ivar)), varid)
+
+          	sts = NF90_GET_VAR(ncidin, varid, i_rad_in(:,:,:), &
+            	START = (/ xoffset, yoffset, it /), COUNT = (/ xfocus, yfocus, 2 /) )
+							
+					ELSE
+
+          	sts = NF90_INQ_VARID(ncidin, TRIM(var_wrf(ivar)), varid)
+
+          	sts = NF90_GET_VAR(ncidin, varid, rad_in(:,:,:), &
+            	START = (/ xoffset, yoffset, it /), COUNT = (/ xfocus, yfocus, 2 /) )
+
+					END IF
+
 
 
 ! (het): using hard coded indices for informational output is very dangerous when one
@@ -1358,18 +1471,30 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
 
         ELSE IF (var_cmip(ivar) == "mrso") THEN
 
-          ALLOCATE( smois_in( xfocus, yfocus, 4, 2 ), STAT=sts )
+          IF (.not. ALLOCATED(smois_in)) ALLOCATE( smois_in( xfocus, yfocus, 4, 2 ), STAT=sts )
 
           sts = NF90_INQ_VARID(ncidin, "SMOIS", varid)
 
           sts = NF90_GET_VAR(ncidin, varid, smois_in(:,:,:,:), &
             START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, 4, 2 /) )
 
+! (het): get soil layer thickness
+
+          IF (.not. ALLOCATED(DZS)) ALLOCATE( DZS( 4 ), STAT=sts )
+
+          sts = NF90_INQ_VARID(ncidin, "DZS", varid)
+        	IF ( sts /= NF90_NOERR ) THEN
+          	DZS = (/ 0.1, 0.3, 0.6, 1.0 /)
+        	ELSE
+          	sts = NF90_GET_VAR(ncidin, varid, DZS, &
+            	START = (/ 1, it /), COUNT = (/ 4, 1 /) )
+						PRINT*,'DZS ', DZS(:)
+        	END IF
 
         ELSE IF (var_cmip(ivar) == "sfcWind") THEN
 
-          ALLOCATE( u10_in ( xfocus, yfocus ), STAT=sts ) 
-          ALLOCATE( v10_in ( xfocus, yfocus ), STAT=sts )
+          IF (.not. ALLOCATED(u10_in)) ALLOCATE( u10_in ( xfocus, yfocus ), STAT=sts ) 
+          IF (.not. ALLOCATED(v10_in)) ALLOCATE( v10_in ( xfocus, yfocus ), STAT=sts )
 
           sts = NF90_INQ_VARID(ncidin, "U10", u10_varid)
 
@@ -1384,10 +1509,10 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
 
         ELSE IF ((var_cmip(ivar) == "uas") .or. (var_cmip(ivar) == "vas")) THEN
 
-          ALLOCATE( u10_in ( xfocus, yfocus ), STAT=sts )
-          ALLOCATE( v10_in ( xfocus, yfocus ), STAT=sts )
-          ALLOCATE( sinalpha_in( xfocus, yfocus ), STAT=sts )
-          ALLOCATE( cosalpha_in( xfocus, yfocus ), STAT=sts )
+          IF (.not. ALLOCATED(u10_in)) ALLOCATE( u10_in ( xfocus, yfocus ), STAT=sts )
+          IF (.not. ALLOCATED(v10_in)) ALLOCATE( v10_in ( xfocus, yfocus ), STAT=sts )
+          IF (.not. ALLOCATED(sinalpha_in)) ALLOCATE( sinalpha_in( xfocus, yfocus ), STAT=sts )
+          IF (.not. ALLOCATED(cosalpha_in)) ALLOCATE( cosalpha_in( xfocus, yfocus ), STAT=sts )
 
           sts = NF90_INQ_VARID(ncidin, "U10", u10_varid)
           sts = NF90_INQ_VARID(ncidin, "V10", v10_varid)
@@ -1433,17 +1558,22 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
 !       ***psl***   ***vars on pressure levels***     
 
         IF ( (var_cmip(ivar) == "psl") .or. (height(ivar) == 850) &
-              .or.(height(ivar) == 500) .or. (height(ivar) == 200)) THEN
+              .or.(height(ivar) == 500) .or. (height(ivar) == 200) .or. (height(ivar) == 700)) THEN
 
-          DO nl = 1,nz-1
+! (het) PH and PHB are on nz+1 levels
+!          DO nl = 1,nz-1
+          DO nl = 1,nz
             ph_fl(:,:,nl) = ((ph_in(:,:,nl)+phb_in(:,:,nl))+(ph_in(:,:,nl+1)+phb_in(:,:,nl+1)))/2./9.81
           END DO
 
-          t_in(:,:,:) = (theta_in(:,:,:)+300.)*((pp_in(:,:,:)+pb_in(:,:,:))/100000.)**(287./1004.)
+! (het)   t_in(:,:,:) = (theta_in(:,:,:)+300.)*((pp_in(:,:,:)+pb_in(:,:,:))/100000.)**(287./1004.)
+          t_in(:,:,:) = (theta_in(:,:,:)+T00(1))*((pp_in(:,:,:)+pb_in(:,:,:))/P00(1))**(R/cp)
 
+! (het) this calculation of mean sea level pressure gives quite high anomalies in mountainous areas
+!       a modified version is taken from wrf_interp.F90 and implemented at the end of this section.
           psl_in(:,:) = (pp_in(:,:,1)+pb_in(:,:,1))*((t_in(:,:,1)*(1.+0.61*qv_in(:,:,1))+0.0065*ph_fl(:,:,1))/(t_in(:,:,1)*(1+0.61*qv_in(:,:,1))))**(9.81/(287.*0.0065))
 
-          pout = (/ 85000.,50000.,20000. /)
+          pout = (/ 85000.,70000.,50000.,20000. /)
 
           p_in = pp_in+pb_in
 
@@ -1451,12 +1581,15 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
            
           !DO np = 1,3     !SKn: could loop over heigts per variable or calculate t850, t500, t200 as individual variables 
 
+! (het): include 700 hPa level
           IF (height(ivar) == 850) THEN
             np = 1
-          ELSE IF (height(ivar) == 500) THEN
+          ELSE IF (height(ivar) == 700) THEN
             np = 2
-          ELSE IF (height(ivar) == 200) THEN
+          ELSE IF (height(ivar) == 500) THEN
             np = 3
+          ELSE IF (height(ivar) == 200) THEN
+            np = 4
           END IF
 
           !print *,'np', np      
@@ -1467,12 +1600,16 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
           ELSE IF ( (var_cmip(ivar) == "hus850") ) THEN
             var3d_in(:,:,:) = qv_in(:,:,:)
             !print*, 'var3d_in(50,50,10)', var3d_in(50,50,10), var_cmip(ivar)
-          ELSE IF ( (var_cmip(ivar) == "ua850") .or. (var_cmip(ivar) == "ua500") .or. (var_cmip(ivar) == "ua200") ) THEN
+! (het): include ua at 700 hPa
+!          ELSE IF ( (var_cmip(ivar) == "ua850") .or. (var_cmip(ivar) == "ua500") .or. (var_cmip(ivar) == "ua200") ) THEN
+          ELSE IF ( (var_cmip(ivar) == "ua850") .or. (var_cmip(ivar) == "ua500") .or. (var_cmip(ivar) == "ua200") .or. (var_cmip(ivar) == "ua700")) THEN
             DO i = 1,xfocus
             var3d_in(i,:,:) = (u_in(i,:,:)+u_in(i+1,:,:))/2.*cosalpha_in(:,:) - (v_in(i,:,:)+v_in(i+1,:,:))/2.*sinalpha_in(:,:) !rotate to earth grid
             END DO
             !print*, 'var3d_in(50,50,10)', var3d_in(50,50,10), var_cmip(ivar)
-          ELSE IF ( (var_cmip(ivar) == "va850") .or. (var_cmip(ivar) == "va500") .or. (var_cmip(ivar) == "va200") ) THEN
+! (het): include va at 700 hPa
+!          ELSE IF ( (var_cmip(ivar) == "va850") .or. (var_cmip(ivar) == "va500") .or. (var_cmip(ivar) == "va200") ) THEN
+          ELSE IF ( (var_cmip(ivar) == "va850") .or. (var_cmip(ivar) == "va500") .or. (var_cmip(ivar) == "va200") .or. (var_cmip(ivar) == "va700")) THEN
             DO j = 1,yfocus
             var3d_in(:,j,:) = (v_in(:,j,:)+v_in(:,j+1,:))/2.*cosalpha_in(:,:) + (u_in(i,:,:)+u_in(i+1,:,:))/2.*sinalpha_in(:,:) !rotate to earth grid
             END DO
@@ -1482,16 +1619,72 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
             !print*, 'var3d_in(50,50,10)', var3d_in(50,50,10), var_cmip(ivar)
           END IF
 
-          var_pl = 1.e20
+          var_pl(:,:,:) = 1.e20
 
+! (het) use different interpolation methods for different variables
+          IF ( (var_cmip(ivar) == "ta850") .or. (var_cmip(ivar) == "ta500") .or. (var_cmip(ivar) == "ta200") ) THEN
+          ! linear in zg
+            DO i = 1,xfocus 
+              DO j = 1,yfocus
+                DO nl = 1,nz - 1
+                  IF (pout(np).le.p_in(i,j,nl) .and. pout(np).gt.p_in(i,j,nl+1)) then
+                
+! (het): calculate zg at pout, first (linear in log(p)
+                    slope = (ph_fl(i,j,nl)-ph_fl(i,j,nl+1))/ (LOG(p_in(i,j,nl))-LOG(p_in(i,j,nl+1)))
+                    zg_pout = ph_fl(i,j,nl+1) + slope* (LOG(pout(np))-LOG(p_in(i,j,nl+1)))
+! (het): interpolate linearly in zg
+                    slope = (var3d_in(i,j,nl)-var3d_in(i,j,nl+1))/ (ph_fl(i,j,nl)-ph_fl(i,j,nl+1))
+                    var_pl(i,j,np) = var3d_in(i,j,nl+1) + slope* (zg_pout-ph_fl(i,j,nl+1))
+									
+                  END IF
+                END DO
+              END DO
+            END DO
+          ELSE IF ((var_cmip(ivar) == "hus850") .or. (var_cmip(ivar) == "zg500") .or. (var_cmip(ivar) == "zg200") ) THEN
+          ! linear in log(p)
+            DO i = 1,xfocus 
+              DO j = 1,yfocus
+                DO nl = 1,nz - 1
+                  IF (pout(np).le.p_in(i,j,nl) .and. pout(np).gt.p_in(i,j,nl+1)) then
+                
+                  slope = (var3d_in(i,j,nl)-var3d_in(i,j,nl+1))/ (LOG(p_in(i,j,nl))-LOG(p_in(i,j,nl+1)))
+                  var_pl(i,j,np) = var3d_in(i,j,nl+1) + slope* (LOG(pout(np))-LOG(p_in(i,j,nl+1)))
+									
+                  END IF
+                END DO
+              END DO
+            END DO
+          ELSE IF ( (var_cmip(ivar) == "ua850") .or. (var_cmip(ivar) == "ua500") .or. (var_cmip(ivar) == "ua200") .or. (var_cmip(ivar) == "ua700") .or. &
+                    (var_cmip(ivar) == "va850") .or. (var_cmip(ivar) == "va500") .or. (var_cmip(ivar) == "va200") .or. (var_cmip(ivar) == "va700") ) THEN
+          ! logarithmic in zg
+            DO i = 1,xfocus 
+              DO j = 1,yfocus
+                DO nl = 1,nz - 1
+                  IF (pout(np).le.p_in(i,j,nl) .and. pout(np).gt.p_in(i,j,nl+1)) then
+                
+! (het): calculate zg at pout, first (linear in log(p)
+                    slope = (ph_fl(i,j,nl)-ph_fl(i,j,nl+1))/ (LOG(p_in(i,j,nl))-LOG(p_in(i,j,nl+1)))
+                    zg_pout = ph_fl(i,j,nl+1) + slope* (LOG(pout(np))-LOG(p_in(i,j,nl+1)))
+! (het): interpolate logarithmic in zg
+                    slope = (var3d_in(i,j,nl)-var3d_in(i,j,nl+1))/ (ph_fl(i,j,nl)-ph_fl(i,j,nl+1))
+                    var_pl(i,j,np) = var3d_in(i,j,nl) * EXP( (zg_pout - ph_fl(i,j,nl)) * (LOG(var3d_in(i,j,nl+1)) - LOG(var3d_in(i,j,nl))) / (ph_fl(i,j,nl+1)-ph_fl(i,j,nl)))
+									
+                  END IF
+                END DO
+              END DO
+            END DO
+          END IF
           DO i = 1,xfocus 
             DO j = 1,yfocus
               DO nl = 1,nz - 1
-                IF (pout(np).lt.p_in(i,j,nl) .and. pout(np).gt.p_in(i,j,nl+1)) then
+                IF (pout(np).le.p_in(i,j,nl) .and. pout(np).gt.p_in(i,j,nl+1)) then
                 
-                  slope = (var3d_in(i,j,nl)-var3d_in(i,j,nl+1))/ (p_in(i,j,nl)-p_in(i,j,nl+1))
-                  var_pl(i,j,np) = var3d_in(i,j,nl+1) + slope* (pout(np)-p_in(i,j,nl+1))
-
+! (het): change interpolation to be linear in log(p)
+!                  slope = (var3d_in(i,j,nl)-var3d_in(i,j,nl+1))/ (p_in(i,j,nl)-p_in(i,j,nl+1))
+!                  var_pl(i,j,np) = var3d_in(i,j,nl+1) + slope* (pout(np)-p_in(i,j,nl+1))
+                  slope = (var3d_in(i,j,nl)-var3d_in(i,j,nl+1))/ (LOG(p_in(i,j,nl))-LOG(p_in(i,j,nl+1)))
+                  var_pl(i,j,np) = var3d_in(i,j,nl+1) + slope* (LOG(pout(np))-LOG(p_in(i,j,nl+1)))
+									
                 END IF
               END DO
             END DO
@@ -1500,6 +1693,14 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
 
           data_in(:,:) = var_pl(:,:,np)
 
+! (het) no comes sea level pressure, which has also been ignored so far... ;-)
+					IF ( var_cmip(ivar) == "psl" ) THEN
+						
+!						CALL calcslp(psl_in,p_in,qv_in,theta_in,ph_fl,nz,yfocus,xfocus,T00(1))
+						
+						data_in(:,:) = psl_in(:,:)
+					END IF
+
         END IF
 
 
@@ -1507,7 +1708,8 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
 
         IF ( (var_cmip(ivar) == "prw") ) THEN     
 
-          t_in(:,:,:) = (theta_in(:,:,:)+300.)*((pp_in(:,:,:)+pb_in(:,:,:))/100000.)**(R/cp)
+! (het)          t_in(:,:,:) = (theta_in(:,:,:)+300.)*((pp_in(:,:,:)+pb_in(:,:,:))/100000.)**(R/cp)
+          t_in(:,:,:) = (theta_in(:,:,:)+T00(1))*((pp_in(:,:,:)+pb_in(:,:,:))/P00(1))**(R/cp)
           p_in = pp_in+pb_in
 
           prw(:,:) = 0.
@@ -1525,7 +1727,8 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
 
         IF ( (var_cmip(ivar) == "clwvi") ) THEN
 
-          t_in(:,:,:) = (theta_in(:,:,:)+300.)*((pp_in(:,:,:)+pb_in(:,:,:))/100000.)**(R/cp)
+! (het)          t_in(:,:,:) = (theta_in(:,:,:)+300.)*((pp_in(:,:,:)+pb_in(:,:,:))/100000.)**(R/cp)
+          t_in(:,:,:) = (theta_in(:,:,:)+T00(1))*((pp_in(:,:,:)+pb_in(:,:,:))/P00(1))**(R/cp)
           p_in = pp_in+pb_in          
 
           clwvi(:,:) = 0.
@@ -1543,7 +1746,8 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
 
         IF ( (var_cmip(ivar) == "clivi")) THEN
 
-          t_in(:,:,:) = (theta_in(:,:,:)+300.)*((pp_in(:,:,:)+pb_in(:,:,:))/100000.)**(R/cp)
+! (het)          t_in(:,:,:) = (theta_in(:,:,:)+300.)*((pp_in(:,:,:)+pb_in(:,:,:))/100000.)**(R/cp)
+          t_in(:,:,:) = (theta_in(:,:,:)+T00(1))*((pp_in(:,:,:)+pb_in(:,:,:))/P00(1))**(R/cp)
           p_in = pp_in+pb_in
 
           clivi(:,:) = 0.
@@ -1563,7 +1767,8 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
 
         IF ( (var_cmip(ivar) == "cape") ) THEN
 
-          t_in(:,:,:) = (theta_in(:,:,:)+300.)*((pp_in(:,:,:)+pb_in(:,:,:))/100000.)**(287./1004.)
+! (het)          t_in(:,:,:) = (theta_in(:,:,:)+300.)*((pp_in(:,:,:)+pb_in(:,:,:))/100000.)**(287./1004.)
+          t_in(:,:,:) = (theta_in(:,:,:)+T00(1))*((pp_in(:,:,:)+pb_in(:,:,:))/P00(1))**(R/cp)
 
           p_in = pp_in+pb_in          
 
@@ -1582,7 +1787,8 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
 
                 IF (qvs(i,j,nl) .gt. qv_in(i,j,1)) THEN !dry adiabatic ascent
                
-                  t_p(i,j,nl+1) = (theta_in(i,j,1)+300.)*(p_in(i,j,nl+1)/100000.)**(R/cp)   
+! (het)                  t_p(i,j,nl+1) = (theta_in(i,j,1)+300.)*(p_in(i,j,nl+1)/100000.)**(R/cp)   
+                  t_p(i,j,nl+1) = (theta_in(i,j,1)+T00(1))*(p_in(i,j,nl+1)/P00(1))**(R/cp)   
 
                 ELSE IF (qvs(i,j,nl) .lt. qv_in(i,j,1)) THEN ! moist adiabatic ascent
 
@@ -1596,9 +1802,13 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
 
                     qvs(i,j,nl+1) = 0.622*a*exp(b*(t_ii-c)/(t_ii-d))/p_in(i,j,nl+1)
 
-                    t_ii = t_ii - (t_ii*(100000./p_in(i,j,nl+1))**(R/cp)*exp(L*qvs(i,j,nl+1)/(cp*t_ii)) &
-                           - (t_p(i,j,nl)*(100000./p_in(i,j,nl))**(R/cp)*exp(L*qvs(i,j,nl)/(cp*t_p(i,j,nl))))) &
-                           / ( (100000./p_in(i,j,nl+1))**(R/cp)*exp(n/(p_in(i,j,nl+1)*t_ii)*exp(b*(t_ii-c)/(t_ii-d))) * &
+! (het)                    t_ii = t_ii - (t_ii*(100000./p_in(i,j,nl+1))**(R/cp)*exp(L*qvs(i,j,nl+1)/(cp*t_ii)) &
+!                           - (t_p(i,j,nl)*(100000./p_in(i,j,nl))**(R/cp)*exp(L*qvs(i,j,nl)/(cp*t_p(i,j,nl))))) &
+!                           / ( (100000./p_in(i,j,nl+1))**(R/cp)*exp(n/(p_in(i,j,nl+1)*t_ii)*exp(b*(t_ii-c)/(t_ii-d))) * &
+!                               (1 - (n/p_in(i,j,nl+1)*exp(b*(t_ii-c)/(t_ii-d))*(t_ii*(t_ii-b*c)+(b-2)*d*t_ii+d**2))/(t_ii*(d-t_ii)**2)) )
+                    t_ii = t_ii - (t_ii*(P00(1)/p_in(i,j,nl+1))**(R/cp)*exp(L*qvs(i,j,nl+1)/(cp*t_ii)) &
+                           - (t_p(i,j,nl)*(P00(1)/p_in(i,j,nl))**(R/cp)*exp(L*qvs(i,j,nl)/(cp*t_p(i,j,nl))))) &
+                           / ( (P00(1)/p_in(i,j,nl+1))**(R/cp)*exp(n/(p_in(i,j,nl+1)*t_ii)*exp(b*(t_ii-c)/(t_ii-d))) * &
                                (1 - (n/p_in(i,j,nl+1)*exp(b*(t_ii-c)/(t_ii-d))*(t_ii*(t_ii-b*c)+(b-2)*d*t_ii+d**2))/(t_ii*(d-t_ii)**2)) )
 
                   END DO
@@ -1645,7 +1855,7 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
 
         IF (var_cmip(ivar) == "clt") THEN
 
-          ALLOCATE( cldfra_inv( xfocus, yfocus ), STAT=sts )
+          IF (.not. ALLOCATED(cldfra_inv)) ALLOCATE( cldfra_inv( xfocus, yfocus ), STAT=sts )
 
           cldfra_inv(:,:) = 1.
 
@@ -1676,15 +1886,35 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
 !       ***pr***
         IF (var_cmip(ivar) == "pr") THEN 
 
-          data_in(:,:) = ((rainnc_in(:,:,2) + rainc_in(:,:,2)) - (rainnc_in(:,:,1) + rainc_in(:,:,1)))/(dtHours*3600.) !unit [mm/3hr] to [kg m-2 s-1]
+! (het): bucket system?
+!          data_in(:,:) = ((rainnc_in(:,:,2) + rainc_in(:,:,2)) - (rainnc_in(:,:,1) + rainc_in(:,:,1)))/(dtHours*3600.) !unit [mm/3hr] to [kg m-2 s-1]
+!                                                           !ATTENTION: implement adjustable time intervals that the differences are devided by
+          IF ( bucket_mm >0. ) THEN
+						
+						data_in(:,:) = ((rainnc_in(:,:,2) + rainc_in(:,:,2)) - (rainnc_in(:,:,1) + rainc_in(:,:,1)) + &
+														(i_rainnc_in(:,:,2) + i_rainc_in(:,:,2) - i_rainnc_in(:,:,1) - i_rainc_in(:,:,1))*bucket_mm)/(dtHours*3600.) !unit [mm/3hr] to [kg m-2 s-1]
                                                            !ATTENTION: implement adjustable time intervals that the differences are devided by
+
+					ELSE	
+
+						data_in(:,:) = ((rainnc_in(:,:,2) + rainc_in(:,:,2)) - (rainnc_in(:,:,1) + rainc_in(:,:,1)))/(dtHours*3600.) !unit [mm/3hr] to [kg m-2 s-1]
+                                                           !ATTENTION: implement adjustable time intervals that the differences are devided by
+
+					END IF
+
         END IF
 
 
 !       ***prc***
         IF (var_cmip(ivar) == "prc") THEN
 
-          data_in(:,:) = (rainc_in(:,:,2) - rainc_in(:,:,1))/(dtHours*3600.) !unit [mm/3hr] to [kg m-2 s-1]
+! (het): bucket system?
+!          data_in(:,:) = (rainc_in(:,:,2) - rainc_in(:,:,1))/(dtHours*3600.) !unit [mm/3hr] to [kg m-2 s-1]
+          IF ( bucket_mm > 0. ) THEN
+						data_in(:,:) = (rainc_in(:,:,2) - rainc_in(:,:,1) + (i_rainc_in(:,:,2) - i_rainc_in(:,:,1))*bucket_mm)/(dtHours*3600.) !unit [mm/3hr] to [kg m-2 s-1]
+					ELSE
+						data_in(:,:) = (rainc_in(:,:,2) - rainc_in(:,:,1))/(dtHours*3600.) !unit [mm/3hr] to [kg m-2 s-1]
+					END IF
 
         END IF
 
@@ -1751,7 +1981,18 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
 
           IF (TRIM(fnNMLvar(varnml)) == "runctrl.vars.nml_radiation") THEN
            
-            data_in(:,:) = (rad_in(:,:,2) - rad_in(:,:,1)) /(dtHours*3600.)       ! take difference of accumulated values
+! (het) bucket system?
+
+						IF ( bucket_J > 0. ) THEN
+						
+            	data_in(:,:) = ( rad_in(:,:,2) - rad_in(:,:,1) + &
+														   (i_rad_in(:,:,2) - i_rad_in(:,:,1))*bucket_J ) /(dtHours*3600.)   ! take difference of accumulated values
+
+						ELSE
+
+            	data_in(:,:) = (rad_in(:,:,2) - rad_in(:,:,1)) /(dtHours*3600.)       ! take difference of accumulated values
+
+						END IF
 
           ELSE IF (TRIM(fnNMLvar(varnml)) == "runctrl.vars.nml_radiation_alternative") THEN
            
@@ -1765,8 +2006,8 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
 !       ***mrso***
         IF (var_cmip(ivar) == "mrso") THEN
 
-          data_in(:,:) = ((smois_in(:,:,1,1)*0.1 + smois_in(:,:,2,1)*0.3 + smois_in(:,:,3,1)*0.6 + smois_in(:,:,4,1)*1.0 ) + &
-                         (smois_in(:,:,1,2)*0.1 + smois_in(:,:,2,2)*0.3 + smois_in(:,:,3,2)*0.6 + smois_in(:,:,4,2)*1.0 ))/2.*1000. 
+          data_in(:,:) = ((smois_in(:,:,1,1)*DZS(1) + smois_in(:,:,2,1)*DZS(2) + smois_in(:,:,3,1)*DZS(3) + smois_in(:,:,4,1)*DZS(4) ) + &
+                         (smois_in(:,:,1,2)*DZS(1) + smois_in(:,:,2,2)*DZS(2) + smois_in(:,:,3,2)*DZS(3) + smois_in(:,:,4,2)*DZS(4) ))/2.*1000. 
 
         END IF
 
@@ -1825,7 +2066,12 @@ DO varnml = 1, 2, 1 !loop over different var namelists (not best solution, but o
 		
 ! (het): stop here, if end of the period to be extracted is reached
 !				 this also guarantees a normal termination at this point
-				IF ( ( InDateTimeYear(it)  == NINT(TimeRefArray(SIZE(TimeRefArray, 1) ,2)) ) .AND. &
+				
+        print *, 'check date:'
+        print *, InDateTimeYear(it), InDateTimeMonth(it), InDateTimeDay(it), InDateTimeHour(it)
+        print *, NINT(TimeRefArray(SIZE(TimeRefArray, 1) ,2:5))
+        
+        IF ( ( InDateTimeYear(it)  == NINT(TimeRefArray(SIZE(TimeRefArray, 1) ,2)) ) .AND. &
 		         ( InDateTimeMonth(it) == NINT(TimeRefArray(SIZE(TimeRefArray, 1) ,3)) ) .AND. &
 			       ( InDateTimeDay(it)   == NINT(TimeRefArray(SIZE(TimeRefArray, 1) ,4)) ) .AND. &
 			       ( InDateTimeHour(it)  == NINT(TimeRefArray(SIZE(TimeRefArray, 1) ,5)) ) ) THEN
@@ -1907,6 +2153,130 @@ END DO
 CLOSE(2)
 
 END SUBROUTINE generateFilelist
+
+!===============================================================================
+
+SUBROUTINE calcslp(slp,pres,qv,tk1,ght,nz,ns,ew,T00)
+	IMPLICIT NONE
+
+	INTEGER, INTENT(IN) :: nz,ns,ew
+	REAL, DIMENSION(:,:), INTENT(INOUT) :: slp
+	REAL, DIMENSION(:,:,:), INTENT(IN) :: pres,qv,tk1,ght
+	REAL, INTENT(IN)											:: T00
+      integer                           :: i,j,k,klo,khi
+      integer,DIMENSION(ew,ns)          :: level
+      real, DIMENSION(ew, ns)           :: t_sea_level, t_surf
+			real, DIMENSION(ew, ns, nz)				:: tk
+      real                              :: rgas,grav,gamma
+      real                              :: plo , phi , tlo, thi , zlo , zhi
+      real                              :: p_at_pconst , t_at_pconst , z_at_pconst
+      real                              :: z_half_lowest
+      real                              :: tc,pconst
+      logical                           :: l1 , l2 , l3, found, ridiculous_mm5_test
+	
+      rgas   = 287.04
+      grav   = 9.81
+      gamma  = 0.0065
+      tc     = 273.16+17.5
+! (het) in wrf_interp pconst is set to 10000 Pa, but this gives too low pressure values 
+! 			at sea level. So, I've reduced pconst to 5000 Pa, which reduces this underestimation.
+!      pconst = 10000.
+      pconst = 5000.
+			ridiculous_mm5_test = .TRUE. 
+	
+!     Find least zeta level that is PCONST Pa above the surface.  We later use this
+!     level to extrapolate a surface pressure and temperature, which is supposed
+!     to reduce the effect of the diurnal heating cycle in the pressure field.
+
+      tk    = tk1 + T00
+			
+			DO j = 1 , ns
+         DO i = 1 , ew
+            level(i,j) = -1
+
+            k = 1
+            found = .false.
+            do while( (.not. found) .and. (k.le.nz))
+               IF ( pres(i,j,k) .LT. pres(i,j,1)-PCONST ) THEN
+                  level(i,j) = k
+                  found = .true.
+               END IF
+               k = k+1
+            END DO 
+
+            IF ( level(i,j) .EQ. -1 ) THEN
+            PRINT '(A,I4,A)','Troubles finding level ',NINT(PCONST)/100,' above ground.'
+            PRINT '(A,I4,A,I4,A)','Problems first occur at (',i,',',j,')'
+            PRINT '(A,F6.1,A)','Surface pressure = ',pres(i,j,1)/100,' hPa.'
+            STOP 'Error_in_finding_100_hPa_up'
+         END IF
+
+
+         END DO
+      END DO
+  
+!     Get temperature PCONST Pa above surface.  Use this to extrapolate 
+!     the temperature at the surface and down to sea level.
+
+      DO j = 1 , ns
+         DO i = 1 , ew
+
+            klo = MAX ( level(i,j) - 1 , 1      )
+            khi = MIN ( klo + 1        , nz - 1 )
+     
+            IF ( klo .EQ. khi ) THEN
+               PRINT '(A)','Trapping levels are weird.'
+               PRINT '(A,I3,A,I3,A)','klo = ',klo,', khi = ',khi,': and they should not be equal.'
+               STOP 'Error_trapping_levels'
+            END IF
+
+         plo = pres(i,j,klo)
+         phi = pres(i,j,khi)
+         tlo = tk(i,j,klo) * (1. + 0.608 * qv(i,j,klo) )
+         thi = tk(i,j,khi) * (1. + 0.608 * qv(i,j,khi) )
+         zlo = ght(i,j,klo)         
+         zhi = ght(i,j,khi)
+
+         p_at_pconst = pres(i,j,1) - pconst
+         t_at_pconst = thi-(thi-tlo)*LOG(p_at_pconst/phi)*LOG(plo/phi)
+         z_at_pconst = zhi-(zhi-zlo)*LOG(p_at_pconst/phi)*LOG(plo/phi)
+
+         t_surf(i,j) = t_at_pconst*(pres(i,j,1)/p_at_pconst)**(gamma*rgas/grav)
+         t_sea_level(i,j) = t_at_pconst+gamma*z_at_pconst
+
+         END DO
+      END DO
+
+!     If we follow a traditional computation, there is a correction to the sea level 
+!     temperature if both the surface and sea level temnperatures are *too* hot.
+
+      IF ( ridiculous_mm5_test ) THEN
+         DO j = 1 , ns
+            DO i = 1 , ew
+               l1 = t_sea_level(i,j) .LT. TC 
+               l2 = t_surf     (i,j) .LE. TC
+               l3 = .NOT. l1
+               IF ( l2 .AND. l3 ) THEN
+                  t_sea_level(i,j) = TC
+               ELSE
+                  t_sea_level(i,j) = TC - 0.005*(t_surf(i,j)-TC)**2
+               END IF
+            END DO
+         END DO
+      END IF
+
+!     The grand finale: ta da!
+
+      DO j = 1 , ns
+      DO i = 1 , ew
+         z_half_lowest=ght(i,j,1)
+         slp(i,j) = pres(i,j,1) *EXP((2.*grav*z_half_lowest)/(rgas*(t_sea_level(i,j)+t_surf(i,j))))
+!         slp(i,j) = slp(i,j) * 0.01
+      END DO
+      END DO
+
+
+END SUBROUTINE calcslp
 
 !===============================================================================
 
