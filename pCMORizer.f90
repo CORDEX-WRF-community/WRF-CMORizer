@@ -62,6 +62,8 @@ MODULE NamelistHandling
   CHARACTER (len = 19) :: tstot, tetot
 
   CHARACTER (len = 300) :: PnFnGeo
+  
+  CHARACTER (len = 3) :: model
 
   LOGICAL :: aggregation_yearly, aggregation_monthly, aggregation_individually
   CHARACTER (len = 19) :: tsact, teact
@@ -88,7 +90,7 @@ MODULE NamelistHandling
   NAMELIST / static_fields / PnFnGeo
 
   NAMELIST / tool_config / nvar, aggregation_yearly, aggregation_monthly, &
-    aggregation_individually, tsact, teact
+    aggregation_individually, tsact, teact, model
 
 END MODULE NamelistHandling
 
@@ -173,8 +175,10 @@ real(kind=8), parameter :: a1=-2.8365744e3,a2=-6.028076559e3,a3=19.54263612,a4=-
 real(kind=8), parameter :: a5=1.6261698e-5,a6=7.0229056e-10,a7=-1.8680009e-13,a8=2.7150305
 real(kind=8), parameter :: b1=-5.8666426e3,b2=22.32870244,b3=1.39387003e-2,b4=-3.4262402e-5
 real(kind=8), parameter :: b5=2.7040955e-8,b6=6.7063522e-1
-real(kind=8), parameter :: fi1=3.62183e-4,fi2=2.6061244e-5,fi3=3.8667770e-7,fi4=3.8268958e-9,fi5=-10.7604,fi6=6.3987441e-2,fi7=-2.6351566e-4,fi8=1.6725084e-6
-real(kind=8), parameter :: fw1=3.536240e-4,fw2=2.932836e-5,fw3=2.616898e-7,fw4=8.581361e-9,fw5=-10.75880,fw6=6.326813e-2,fw7=-2.536893e-4,fw8=6.340529e-7
+real(kind=8), parameter :: fi1=3.62183e-4,fi2=2.6061244e-5,fi3=3.8667770e-7,fi4=3.8268958e-9, &
+  fi5=-10.7604,fi6=6.3987441e-2,fi7=-2.6351566e-4,fi8=1.6725084e-6
+real(kind=8), parameter :: fw1=3.536240e-4,fw2=2.932836e-5,fw3=2.616898e-7,fw4=8.581361e-9, &
+  fw5=-10.75880,fw6=6.326813e-2,fw7=-2.536893e-4,fw8=6.340529e-7
 
 ! new netCDF file
 INTEGER :: ncid, ncidin, ncidin0
@@ -478,34 +482,37 @@ ALLOCATE( GeoInRLon(xfocus) )
 sts = NF90_OPEN(TRIM(PnFnGeo), IOR(NF90_NOWRITE, NF90_MPIIO), ncidin, &
       comm = MPI_COMM_WORLD, info = MPI_INFO_NULL )
 
-sts = NF90_INQ_VARID(ncidin, "XLONG_M", varid)
+sts = NF90_INQ_VARID(ncidin, "lon", varid)
 sts = NF90_GET_VAR(ncidin, varid, GeoInLonLat(:, :, 1), &
   START = (/ xoffset, yoffset, 1 /), COUNT = (/ xfocus, yfocus, 1 /))
 
-sts = NF90_INQ_VARID(ncidin, "XLAT_M", varid)
+sts = NF90_INQ_VARID(ncidin, "lat", varid)
 sts = NF90_GET_VAR(ncidin, varid, GeoInLonLat(:, :, 2), &
   START = (/ xoffset, yoffset, 1 /), COUNT = (/ xfocus, yfocus, 1 /))
 
-sts = NF90_INQ_VARID(ncidin, "CLONG", varid)
+sts = NF90_INQ_VARID(ncidin, "rlon", varid)
 sts = NF90_GET_VAR(ncidin, varid, GeoInRLon(:), &
   START = (/ xoffset, 1, 1 /), COUNT = (/ xfocus, 1, 1 /))
 !PRINT *, "GeoInRLon shape (EUR-15, 339): ", SHAPE(GeoInRLon)
 !PRINT *, "GeoInRLon: ", GeoInRLon
 
-sts = NF90_INQ_VARID(ncidin, "CLAT", varid)
+sts = NF90_INQ_VARID(ncidin, "rlat", varid)
 sts = NF90_GET_VAR(ncidin, varid, GeoInRLat(:), &
   START = (/ 1, yoffset, 1 /), COUNT = (/ 1, yfocus, 1 /))
 !PRINT *, "GeoInRLat shape (EUR-15, 330): ", SHAPE(GeoInRLat)
 !PRINT *, "GeoInRLat: ", GeoInRLat
 
-sts = NF90_GET_ATT(ncidin, NF90_GLOBAL, "POLE_LAT", GeoNPLat)
-sts = NF90_GET_ATT(ncidin, NF90_GLOBAL, "POLE_LON", GeoNPLon)
+!sts = NF90_GET_ATT(ncidin, NF90_GLOBAL, "POLE_LAT", GeoNPLat)
+!sts = NF90_GET_ATT(ncidin, NF90_GLOBAL, "POLE_LON", GeoNPLon)
+GeoNPLat=39.25
+GeoNPLon=-162.0
 
 ! binary, land=1, water=0, compared to LANDUSEF class 16, water fraction, 
 ! >0.5 water fraction is water, including large lakes
-sts = NF90_INQ_VARID(ncidin, "LANDMASK", varid)
+sts = NF90_INQ_VARID(ncidin, "FR_LAND", varid)
 sts = NF90_GET_VAR(ncidin, varid, landmask_in(:, :), &
   START = (/ xoffset, yoffset, 1 /), COUNT = (/ xfocus, yfocus, 1 /))
+! TODO: make this a binary mask
   
 sts = NF90_CLOSE(ncidin)
 
@@ -609,7 +616,8 @@ DO ifrq = 1, 1, 1 ! 1hr
   !CALL SYSTEM("find " // TRIM(DirInputSimResRoot) // "/" // TRIM(domain) // " -name wrfout*" // TRIM(domain) // "*_" // TRIM(ts) // "*.nc -o -name wrfout*" // TRIM(domain) // "*_" // TRIM(te) // "*.nc | sort > " // tmpfileFL)
 
   IF ( rank == 0 ) THEN
-    CALL SYSTEM("find " // TRIM(DirInputSimResRoot) // "/ -name 'wrfout*" // TRIM(domain) // "*" // TRIM(fl_filter) // "*.nc' | sort > " // tmpfileFL_std)
+    !CALL SYSTEM("find " // TRIM(DirInputSimResRoot) // "/ -name 'lfdd*" // TRIM(domain) // "*" // TRIM(fl_filter) // "*.nc' | sort > " // tmpfileFL_std)
+    CALL SYSTEM("find " // TRIM(DirInputSimResRoot) // "/ -name 'lffd*" // ".nc' | sort > " // tmpfileFL_std)
   END IF
   CALL mpi_barrier(MPI_COMM_WORLD, ierr)
   IF ( ierr /= MPI_SUCCESS ) STOP "Problem with MPI_BARRIER"
@@ -617,7 +625,8 @@ DO ifrq = 1, 1, 1 ! 1hr
   CALL GenerateFilelist
 
   IF ( rank == 0 ) THEN 
-    CALL SYSTEM("find " // TRIM(DirInputSimResRoot) // "/ -name 'wrfxtrm*" // TRIM(domain) // "*" // TRIM(fl_filter) // "*.nc' | sort > " // tmpfileFL_xtrm)
+    CALL SYSTEM("find " // TRIM(DirInputSimResRoot) // "/ -name 'wrfxtrm*" // TRIM(domain) // "*" // &
+      TRIM(fl_filter) // "*.nc' | sort > " // tmpfileFL_xtrm)
   END IF
   CALL mpi_barrier(MPI_COMM_WORLD, ierr)
   IF ( ierr /= MPI_SUCCESS ) STOP "Problem with MPI_BARRIER"
@@ -625,7 +634,8 @@ DO ifrq = 1, 1, 1 ! 1hr
   CALL GenerateFilelist
 
   IF ( rank == 0) THEN
-    CALL SYSTEM("find " // TRIM(DirInputSimResRoot) // "/ -name 'wrfpress*" // TRIM(domain) // "*" // TRIM(fl_filter) // "*.nc' | sort > " // tmpfileFL_3d)
+    CALL SYSTEM("find " // TRIM(DirInputSimResRoot) // "/ -name 'wrfpress*" // TRIM(domain) // "*" // &
+      TRIM(fl_filter) // "*.nc' | sort > " // tmpfileFL_3d)
   END IF
   CALL mpi_barrier(MPI_COMM_WORLD, ierr)
   IF ( ierr /= MPI_SUCCESS ) STOP "Problem with MPI_BARRIER"
@@ -837,38 +847,53 @@ DO ifrq = 1, 1, 1 ! 1hr
 ! even in the same filelist file, each input file may cover a different timespan
 ! this determines how many times the tool has to loop over the inputs
 ! format of 'Times': 2009-06-20_08:00:00
+! format of time
 
-        sts = NF90_OPEN(iflWRFin, IOR(NF90_NOWRITE, NF90_MPIIO), ncid_in, comm = MPI_COMM_WORLD, info = MPI_INFO_NULL)
-        sts = NF90_INQUIRE(ncid_in, ndims_in, nvars_in, ngatts_in, unlimdimid_in)
-        sts = NF90_INQ_VARID(ncid_in, "Times", InVarIdRec)
-        sts = NF90_INQUIRE_DIMENSION(ncid_in, unlimdimid_in, &
-          NAME = InDimNameRec, LEN = InDimLenRec)
-        ! with the wrfxtrm minimum and maximum fields, the 1st field per file is
-        ! empty, but the last field has already the next day assigned; this 
-        ! leads to a plus 1 day time shift in the minimum and maximum data
-        ! by shortening the input time vector and by offsetting the time-dim
-        ! by 1 in the output writing this is fixed
-        ! see "variable to read/write with no additional processing" part
-        PRINT *, "number of timesteps in the input data: ", InDimLenRec
+        SELECT CASE (model)
+        CASE ('WRF')
+          PRINT *, "WRF time handling"
+
+          sts = NF90_OPEN(iflWRFin, IOR(NF90_NOWRITE, NF90_MPIIO), ncid_in, comm = MPI_COMM_WORLD, info = MPI_INFO_NULL)
+          sts = NF90_INQUIRE(ncid_in, ndims_in, nvars_in, ngatts_in, unlimdimid_in)
+          sts = NF90_INQ_VARID(ncid_in, "Times", InVarIdRec)
+          sts = NF90_INQUIRE_DIMENSION(ncid_in, unlimdimid_in, &
+            NAME = InDimNameRec, LEN = InDimLenRec)
+          ! with the wrfxtrm minimum and maximum fields, the 1st field per file is
+          ! empty, but the last field has already the next day assigned; this 
+          ! leads to a plus 1 day time shift in the minimum and maximum data
+          ! by shortening the input time vector and by offsetting the time-dim
+          ! by 1 in the output writing this is fixed
+          ! see "variable to read/write with no additional processing" part
+          PRINT *, "number of timesteps in the input data: ", InDimLenRec
 ! KGo: not in my data
-        IF ( ( cell_methods(ivar) == "minimum" ) .OR. &
-             ( cell_methods(ivar) == "maximum" ) ) THEN
-          InDimLenRec = InDimLenRec - 1
-          PRINT *, "fixing number of input timesteps for min/max: ", InDimLenRec
-        END IF
+          IF ( ( cell_methods(ivar) == "minimum" ) .OR. &
+               ( cell_methods(ivar) == "maximum" ) ) THEN
+            InDimLenRec = InDimLenRec - 1
+            PRINT *, "fixing number of input timesteps for min/max: ", InDimLenRec
+          END IF
 ! HTr: also "point" cell_methods need to reduced by 1 record
-!       IF ( ( cell_methods(ivar) == "minimum" ) .OR. &
-!            ( cell_methods(ivar) == "maximum" ) .OR. &
-!            ( cell_methods(ivar) == "point" ) ) THEN
-!         InDimLenRec = InDimLenRec - 1
-!         PRINT *, "fixing number of input timesteps: ", InDimLenRec
-!       END IF
-        ALLOCATE(InVarDataRec(InDimLenRec))
-        sts = NF90_GET_VAR(ncid_in, InVarIdRec, InVarDataRec)
-        sts = NF90_CLOSE(ncid_in)
-        PRINT *, "RCM input file time coverage:"
-        PRINT *, InVarDataRec(1), " to ", InVarDataRec(InDimLenRec)
- 
+!         IF ( ( cell_methods(ivar) == "minimum" ) .OR. &
+!              ( cell_methods(ivar) == "maximum" ) .OR. &
+!              ( cell_methods(ivar) == "point" ) ) THEN
+!           InDimLenRec = InDimLenRec - 1
+!           PRINT *, "fixing number of input timesteps: ", InDimLenRec
+!         END IF
+          ALLOCATE(InVarDataRec(InDimLenRec))
+          sts = NF90_GET_VAR(ncid_in, InVarIdRec, InVarDataRec)
+          sts = NF90_CLOSE(ncid_in)
+          PRINT *, "RCM input file time coverage:"
+          PRINT *, InVarDataRec(1), " to ", InVarDataRec(InDimLenRec)
+
+        CASE ('COS')
+          PRINT *, "COSMO time handling"
+          ! read using CDI, and put into the same variables -> 
+          ! then the time matching needs not to be changed
+        CASE DEFAULT
+          PRINT *, "invalid model specified"
+          STOP
+          ! more model veriants are possible
+        END SELECT
+
         ALLOCATE(InDateTimeYear(InDimLenRec))
         ALLOCATE(InDateTimeMonth(InDimLenRec))
         ALLOCATE(InDateTimeDay(InDimLenRec))
@@ -883,6 +908,7 @@ DO ifrq = 1, 1, 1 ! 1hr
   
         ! this is the temporal coverage of the RCM input data of the specific
         ! file; split the date/time information string into several vectors
+        ! Format example of WRF Times variable: 2000-10-06_00:00:00
         DO i = 1, SIZE(InVarDataRec), 1
         
           READ( InVarDataRec(i), '(I4,1X,I2,1X,I2,1X,I2,1X,I2,1X,I2)' ) &
@@ -894,6 +920,7 @@ DO ifrq = 1, 1, 1 ! 1hr
             InDateTimeSecond(i)
             
           ! 2009062008 use for later-on comparisons
+          ! sub-hourly is not possible
           InDateTimeCombined(i) = & 
             InDateTimeYear(i) * 1000000 + &
             InDateTimeMonth(i) * 10000 + &
@@ -1034,8 +1061,10 @@ DO ifrq = 1, 1, 1 ! 1hr
               PRINT *, "aggregation_individually"
               PRINT *,tsactYear, tsactMonth, tsactDay, tsactHour, teactYear, teactMonth, teactDay, teactHour
 
-              tsact_singlenumber = REAL(tsactYear,8)*1000000._8 + REAL(tsactMonth,8)*10000._8 + REAL(tsactDay,8)*100._8 + REAL(tsactHour,8)
-              teact_singlenumber = REAL(teactYear,8)*1000000._8 + REAL(teactMonth,8)*10000._8 + REAL(teactDay,8)*100._8 + REAL(teactHour,8)
+              tsact_singlenumber = REAL(tsactYear,8)*1000000._8 + REAL(tsactMonth,8)*10000._8 + &
+                REAL(tsactDay,8)*100._8 + REAL(tsactHour,8)
+              teact_singlenumber = REAL(teactYear,8)*1000000._8 + REAL(teactMonth,8)*10000._8 + &
+                REAL(teactDay,8)*100._8 + REAL(teactHour,8)
               PRINT *, tsact_singlenumber, teact_singlenumber
               DO i = 1, SIZE(TimeRefArray, 1), 1
                 IF ( ( TimeRefArray(i,6) >= tsact_singlenumber ) .AND. & 
@@ -1721,7 +1750,8 @@ DO ifrq = 1, 1, 1 ! 1hr
 !                ! alternatively hardcode here
                 !sts = NF90_PUT_VAR(ncid, depth_varid, (/ 0.1D0, 0.3D0, 0.6D0, 1.0D0 /) ) ! wrong
                 sts = NF90_PUT_VAR(ncid, depth_varid, (/ 0.05D0, 0.25D0, 0.7D0, 1.5D0 /) ) ! center points of the depth layers, hardcoded
-                sts = NF90_PUT_VAR(ncid, soillayerbnds_varid, RESHAPE((/ 0.0D0, 0.1D0, 0.1D0, 0.4D0, 0.4D0, 1.0D0, 1.0D0, 2.0D0 /), (/2,4/))) ! bnds hardcoded
+                sts = NF90_PUT_VAR(ncid, soillayerbnds_varid, RESHAPE((/ 0.0D0, 0.1D0, 0.1D0, 0.4D0, &
+                  0.4D0, 1.0D0, 1.0D0, 2.0D0 /), (/2,4/))) ! bnds hardcoded
               END IF 
 
               !-----------------------------------------------------------------
@@ -3432,7 +3462,8 @@ DO ifrq = 1, 1, 1 ! 1hr
                         t_ii = t_ii - (t_ii*(P00(1)/p_in(i,j,nl+1))**(R/cp)*exp(L*qvs(i,j,nl+1)/(cp*t_ii)) - &
                                (t_p(i,j,nl)*(P00(1)/p_in(i,j,nl))**(R/cp)*exp(L*qvs(i,j,nl)/(cp*t_p(i,j,nl))))) / &
                                ( (P00(1)/p_in(i,j,nl+1))**(R/cp)*exp(n/(p_in(i,j,nl+1)*t_ii)*exp(b*(t_ii-c)/(t_ii-d))) * &
-                               (1 - (n/p_in(i,j,nl+1)*exp(b*(t_ii-c)/(t_ii-d))*(t_ii*(t_ii-b*c)+(b-2)*d*t_ii+d**2))/(t_ii*(d-t_ii)**2)) )
+                               (1 - (n/p_in(i,j,nl+1)*exp(b*(t_ii-c)/(t_ii-d))*(t_ii*(t_ii-b*c)+(b-2)* &
+                                 d*t_ii+d**2))/(t_ii*(d-t_ii)**2)) )
   
                       END DO
     
@@ -3451,13 +3482,15 @@ DO ifrq = 1, 1, 1 ! 1hr
                         lfc(i,j) = p_in(i,j,nl)
                       END IF
     
-                      cape(i,j) = cape(i,j) + (t_p(i,j,nl) - t_in(i,j,nl)) / t_in(i,j,nl) * ((phb_in(i,j,nl)+ph_in(i,j,nl))-(phb_in(i,j,nl-1)+ph_in(i,j,nl-1)))
+                      cape(i,j) = cape(i,j) + (t_p(i,j,nl) - t_in(i,j,nl)) / t_in(i,j,nl) * &
+                        ((phb_in(i,j,nl)+ph_in(i,j,nl))-(phb_in(i,j,nl-1)+ph_in(i,j,nl-1)))
     
                       !print*, 'nl, cape(i,j)', nl, cape(i,j)
     
                     ELSE IF ( (t_p(i,j,nl) .lt. t_in(i,j,nl)) .and. (cape(i,j) .eq. 0.) ) THEN ! convective inhibition 
                  
-                      cin(i,j) = cin(i,j) + (t_in(i,j,nl) - t_p(i,j,nl)) / t_in(i,j,nl) * ((phb_in(i,j,nl)+ph_in(i,j,nl))-(phb_in(i,j,nl-1)+ph_in(i,j,nl-1))) 
+                      cin(i,j) = cin(i,j) + (t_in(i,j,nl) - t_p(i,j,nl)) / t_in(i,j,nl) * &
+                        ((phb_in(i,j,nl)+ph_in(i,j,nl))-(phb_in(i,j,nl-1)+ph_in(i,j,nl-1))) 
     
                       !print*, 'nl, cin(i,j)', nl, cin(i,j)
     
@@ -4011,7 +4044,8 @@ DO ifrq = 1, 1, 1 ! 1hr
             ! mr=q2_in 
             ! psf=psfc_in
             !        TK                    mr_sat                 e_sfc                  esat                   fact
-            ALLOCATE(tmp_2d(xfocus,yfocus),tmp1_2d(xfocus,yfocus),tmp2_2d(xfocus,yfocus),tmp3_2d(xfocus,yfocus),tmp4_2d(xfocus,yfocus))
+            ALLOCATE(tmp_2d(xfocus,yfocus),tmp1_2d(xfocus,yfocus),tmp2_2d(xfocus,yfocus), &
+              tmp3_2d(xfocus,yfocus),tmp4_2d(xfocus,yfocus))
 
             tmp_2d = t2_in-c
             tmp2_2d = (q2_in / (epsil+q2_in)) * psfc_in

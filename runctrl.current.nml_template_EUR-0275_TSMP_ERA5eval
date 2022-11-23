@@ -1,0 +1,69 @@
+&globalvars
+   Conventions = "CF-1.10",
+   conventionsURL = "http://www.cfconventions.org",
+   contact = "cordex@fz-juelich.de",
+   experiment = "Historical run with forcing from SMHI-EC-EARTH, r12i1p1, 1st-nest run", 
+!  experiment = "Historical run with forcing from downscaled SMHI-EC-EARTH, r12i1p1, 2nd-nest run",
+   driving_experiment = "SMHI-EC-EARTH; historical; r12i1p1",
+   experiment_id = "historical",
+   driving_model_id = "SMHI-EC-EARTH",
+   driving_model_ensemble_member = "r12i1p1",
+   driving_experiment_name = "historical",
+   institution = "Institute of Bio- and Geosciences (IBG-3, Agrosphere), Research Centre Juelich / Forschungszentrum Juelich (FZJ), GERMANY; Instituto Dom Luiz (IDL), Universidade de Lisboa, PORTUGAL",
+   institute_id = "FZJ-IDL",
+   model_id = "FZJ-WRF381DA",
+   rcm_version_id = "fpsconv-x0n1-v1",
+!  rcm_version_id = "fpsconv-x1n2-v1",
+   project_id = "CORDEX-FPSCONV",
+   CORDEX_domain = "EUR-0275",
+!  CORDEX_domain = "ALP-3",
+   product = "output",
+   references = "https://www.fz-juelich.de, http://idl.campus.ciencias.ulisboa.pt, https://www.mmm.ucar.edu/models/wrf",
+/
+&globalvars_additional
+   title = "FZJ-IDL-WRF381DA model output prepared for CORDEX-FPSCONV climate scenario runs with CMIP5 GCM forcing; joint experiment with IDL (rcp85)",
+   institute_run_id = "CORDEX-FPSCONV_EUR-15-ALP-3_SMHI-EC-EARTH_historical_r12_FZJ-IDL-WRF381DA_v00aJurecaDcCpuProdPrjTt19952005",
+   comment = "Climate simulation performed by Research Centre Juelich, Institute of Bio- and Geosciences (IBG-3); simulation and processing: Klaus GOERGEN k.goergen@fz-juelich.de (ORCID=0000-0002-4208-3444); 10 grid element lateral boundary relaxation zone removed; postprocessing: WRF_CMPRizer_MPI.f90 commit=; joint experiment with IDL/Universidade de Lisboa (Rita M Cardoso, rmcardoso@fc.ul.pt; Pedro M M Soares, pmsoares@fc.ul.pt): except HPC system and compilation settings everything else is kept identical (identical forcing files and configuration), IDL does RCP8.5, FZJ-IBG3 does Historical simulations; reproducibility testing: spinup year for time slice 1 and 2 is run by each institution to derive the impact of the HPC system; for mrso variable: totel depth of soil column=2m",
+   nesting_levels = "2",
+   comment_nesting = "These are the results for the 1st nest of a 2-nest approach; both tests are run at the same time; there are some differences in the configurations of both nests (deep convection parametrisation is OFF); contact the responsible groups for more details",
+!  comment_nesting = "These are the results for the 2nd nest of a 2-nest approach; both tests are run at the same time; there are some differences in the configurations of both nests (deep convection parametrisation is OFF); contact the responsible groups for more details",
+   comment_1nest = "CMIP5 SMHI-EC-EARTH, r12i1p1, RCP8.5 driven simulation (direct downscaling) for the EUR-15 domain using WRF v3.8.1; 1st nesting step",
+   comment_2nest = "Actual convection-permitting FPSCONV simulation for the mandatory km-scale ALP-3 domain using WRF v3.8.1; the LBCs are from the the 1st-Nest simulation results; one-way double nest",
+/
+&filesystem
+!  DirInputSimResRoot =   "/p/scratch/cjjsc39/jjsc3900/sim/tmp/simres",
+   DirInputSimResRoot =   ".",
+   DirOutputPostProRoot = "/p/scratch/cjjsc39/jjsc3900/sim/tmp2/postpro/CMORized",
+   domain = "d01",                        ! for filename generation needed
+!  domain = "d02",                        ! for filename generation needed
+/
+&model_config
+   ts = '0000', !'__YYYY__', !'__YYYY_ts__',                           ! 2009 2012 2014 can be used for pattern matching with filenames, set to '0000' to use all files that are found
+   te = '0000', !'__YYYY__', !'__YYYY_te__',                           ! 2009 2012 2014 can be used for pattern matching with filenames, set to '0000' to use all files that are found
+   nx = 1600,                              ! EUR-15 raw output x-dim, incl. relaxation zone, unstaggered, changed to 359x350 w/ EUR-15
+   ny = 1552,                              ! EUR-15 raw output x-dim, incl. relaxation zone, umstaggered
+!  nx = 490,                              ! ALP-3 WRF grid spec with A-runs (CM/WL)
+!  ny = 440,                              ! ALP-3 spec changed with the B-runs (evaluation): 490x440
+   nz = 49,                               ! number of vertical levels, unstaggered
+   xoffset = 6,                          ! zone to be cut away in x-dir. (e.g., boundary relax zone) spec_bdy_width
+   yoffset = 6,                          ! many grps do not remove the boundary relaxation zone, in agreement with UCAN boundary relaxation zone is removed
+   xfocus = 1588,                          ! EUR-11 official grid x-dim, unknown from geo_em file, nx-2*xoffset
+   yfocus = 1540,                          ! EUR-11 official grid y-dim, unknown from geo_em file, ny-2*yoffset
+!  xfocus = 470,                          ! ALP-3
+!  yfocus = 420,                          ! ALP-3
+   tstot = '1949-12-01_00:00:00',         ! start of the main time vector, per protocol, do not change
+   tetot = '2101-01-01_00:00:00',         ! end of the main time vector, do not change
+/
+&static_fields
+   PnFnGeo = '/p/scratch/cjjsc39/jjsc3900/sim/tmp2/geo/cosmo/lffd2020010100c.nc'
+!  PnFnGeo = '/p/scratch/cjjsc39/jjsc3900/sim/CORDEX-FPSCEM_EUR-15-ALP-3_ECMWF-ERAINT_evaluation_r1i1p1_FZJ-IBG3-WRF381BA_v00aJurecaCpuPrepTt19982014/geo_CORINE_HWSD_from_JMi_cb01refined_use_this/geo_em.d02.nc'
+/
+&tool_config
+   nvar = __nvar__,
+   aggregation_yearly = .T.,              ! for tier-2 / initial processing, default CMOR, 1hr 3hr data are stored in yearly files, data controls files created
+   aggregation_monthly = .F.,             ! data controls monthly files created
+   aggregation_individually = .F.,        ! individual file is created, for the timespan as defined below
+   tsact = '__YYYY__-01-01_00:00:00',     ! tsact and teact are only needed if aggregation_individually = .TRUE.,
+   teact = '__YYYY__-01-02_23:00:00',     ! otherwise it is ignored
+   model = 'WRF'                          ! WRF or COS, depending on the model, some special treatments are needed, 3-letter
+/
