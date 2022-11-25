@@ -5,7 +5,7 @@ FCFLAGS += -I/p/scratch/cjjsc39/jjsc3900/sim/tmp2/tools/pCMORizer.f90/extLib/cdi
 LDFLAGS = -L$(EBROOTNETCDFMINFORTRAN)/lib -lnetcdff -lnetcdf
 LDFLAGS += -L/p/scratch/cjjsc39/jjsc3900/sim/tmp2/tools/pCMORizer.f90/extLib/cdi210/lib -lcdi
 
-PROGRAMS = pCMORizer
+PROGRAMS = test_nc
 
 all: $(PROGRAMS)
 
@@ -15,10 +15,7 @@ all: $(PROGRAMS)
 %.o: %.f90
 	$(FC) $(FCFLAGS) -c $<
 
-.PHONY: clean veryclean
+.PHONY: clean
 
 clean:
-	rm -f *.o *.mod *.MOD *_genmod.f90
-
-veryclean: clean
 	rm -rf *~ $(PROGRAMS)

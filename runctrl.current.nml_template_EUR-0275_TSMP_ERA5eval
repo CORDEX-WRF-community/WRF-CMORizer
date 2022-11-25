@@ -65,5 +65,5 @@
    aggregation_individually = .F.,        ! individual file is created, for the timespan as defined below
    tsact = '__YYYY__-01-01_00:00:00',     ! tsact and teact are only needed if aggregation_individually = .TRUE.,
    teact = '__YYYY__-01-02_23:00:00',     ! otherwise it is ignored
-   model = 'WRF'                          ! WRF or COS, depending on the model, some special treatments are needed, 3-letter
+   model = 'COS'                          ! WRF or COS, depending on the model, some special treatments are needed, 3-letter
 /

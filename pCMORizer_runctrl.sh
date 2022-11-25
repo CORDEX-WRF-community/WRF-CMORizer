@@ -12,16 +12,18 @@
 
 # USAGE="export Y=2020 && sbatch --export=ALL,Y=$Y --job-name=pCMORizerT$Y pCMORizer_runctrl.sh"
 
-#source loadenv.JURECA-DC_2020_Intel-PSMPI.ini
-source loadenv.JURECA-DC_2022_GCC-OpenMPI.ini
+source loadenv.JURECA-DC_2020_Intel-PSMPI.ini
+#source loadenv.JURECA-DC_2022_GCC-OpenMPI.ini
+export LD_LIBRARY_PATH=$(pwd)/extLib/cdi210/lib:$LD_LIBRARY_PATH
+echo $LD_LIBRARY_PATH
 
 echo $SLURM_JOB_NAME
 
 let Y=$Y
-let nvar=1 #36 press lev #2 min/max & special #39 std sfc # ADJUST to the number of variables in the namelist
+let nvar=2 #36 press lev #2 min/max & special #39 std sfc # ADJUST to the number of variables in the namelist
 
 dir_work=$(pwd)
-mkdir ${dir_work}/${Y}
+mkdir -p ${dir_work}/${Y}
 cd "${dir_work}/${Y}"
 
 cp -f ../runctrl.current.nml_template_EUR-0275_TSMP_ERA5eval runctrl.current.nml_d01
@@ -70,7 +72,9 @@ log_d01="log_d01"
 
 ln -sf runctrl.current.nml_d01 runctrl.current.nml
 sleep 2
+#srun --cpu-bind=threads --distribution=block:cyclic:fcyclic --ntasks=$nvar ./pCMORizer > $log_d01 2>&1 #&
 srun --exact --cpu-bind=threads --distribution=block:cyclic:fcyclic --ntasks=$nvar ./pCMORizer > $log_d01 2>&1 #&
+#srun --exclusive --cpu-bind=threads --distribution=block:cyclic:fcyclic --ntasks=$nvar ./pCMORizer > $log_d01 2>&1 #&
 #sleep 30
 
 #ln -sf runctrl.current.nml_d02 runctrl.current.nml

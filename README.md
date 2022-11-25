@@ -1,6 +1,6 @@
 # pCMORizer.f90
 
-2022-11-16
+2022-11-25
 
 The pCMORizer.f90 is an open-source Fortran-based software tool with some ancilliary bash scripts that also use [cdo](https://code.mpimet.mpg.de/projects/cdo/). pCMORizer.f90 and companion tools are used transfer or postprocess raw (regional climate) model ouputs into netCDF files, which comply to the [CMOR](https://cmor.llnl.gov) standard according to the [CORDEX-CMIP3 archive specification](http://is-enes-data.github.io/cordex_archive_specifications.pdf) as part of the [CORDEX WCRP project](https://cordex.org/experiment-guidelines/how-to-submit-data-rcms/). The goal is to make the model data compliant to be disseminated through [ESGF](https://esgf-data.dkrz.de/projects/esgf-dkrz/), and/or generate a dataset which is more efficient to be used in analysis, and local sharing, etc.
 
@@ -238,6 +238,21 @@ Written and tested by in the CONTRIBUTORS.txt file.
 pCMORizer.f90 is released under the MIT License.
 
 For details and restrictions, please read the LICENSE.txt file.
+
+## Some notes on support for TSMP
+
+Generalisation of the features of the tool; instead of two domains, process component models concurrently; some specific adjustments are needed.
+
+Below are some development notes, not the final documentation:
+- Start test dev with COSMO EUR-0275 output, most similar to WRF
+- The different component models need a somwhat adjusted treatment; WRF is using absolute and not relative times, use of https://code.mpimet.mpg.de/projects/cdi for Fortran to extract time information; various tests needed; eventually it seems the tool can only be used for classic netCDF files, hence a different solution, perhaps a Fortran subroutine or a system call to `date` is needed
+- Code scripts and tests to include the new CDI library for the moment
+- The Intel/PSMPI 2020 environment seemed to have issues with CDI; hence use 2022 GCC and OpenMPI, this is on the task list anyway; get rid of some compiler warnings from GCC, also beneficial for Intel; also the GCC compiler produces much smaller executable
+- Using the GCC/OpenMPI environment for pCMORizer.f90 and CDI, there are issues with the parallel execution, i.e. as soon as going to more than one variable there is an issue, something related with the MPI-SCATTER perhaps, maybe interplay with the slurm parameters
+- Right now only variables are ingested which do not need additional processing
+- No adjustment of the attributes and meta data so far (nml)
+- (Other tools from the netCDF library or, e.g., UDUNITS, also do not solve the time information conversion issue easily.)
+- The serial netCDF libs do not work properly with the mpifort compiled code -> netCDF is not working in this case, albeit without error message
 
 ## References<a name="ref_refs"></a>
 

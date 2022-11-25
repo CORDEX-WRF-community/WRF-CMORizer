@@ -96,7 +96,7 @@ END MODULE NamelistHandling
 
 !===============================================================================
 
-PROGRAM WRFCMORizer
+PROGRAM pCMORizer
 
 USE FilelistHandling
 USE RefTimeVecs
@@ -108,6 +108,8 @@ USE MPI
 !USE OMP_LIB
 
 IMPLICIT NONE
+
+INCLUDE 'cdi.inc'
 
 !===============================================================================
 
@@ -195,6 +197,13 @@ INTEGER :: varid, x_varid, lon_varid, lat_varid, rlon_varid, rlat_varid, &
 
 ! input data general query
 INTEGER :: ncid_in, ndims_in, nvars_in, ngatts_in, unlimdimid_in !!!, formatp_in
+
+! input data handling using CDI library, additional vars needed for simplicity
+! YYYYMMDD HHMMSS
+INTEGER :: streamID, vlistID, taxisID, tsID, vdate, vtime, nts
+PARAMETER (nts = 1) 
+CHARACTER (len = 8) :: vdate_str
+CHARACTER (len = 6) :: vtime_str
 
 ! inputs, number of elements
 INTEGER :: nvar_nml
@@ -296,7 +305,7 @@ REAL :: bucket_mm, bucket_J
 ! (het): base state temperature is made flexible in newer versions of WRF. The
 ! actual value is stored in variable T00
 ! also the base state pressure (P00) is kept flexible now.
-REAL, DIMENSION(1) :: T00, P00
+REAL, DIMENSION(1) :: T00, P00, time_test
 INTEGER :: t00_varid, p00_varid
 
 ! variable for adopted vertical interpolation
@@ -853,7 +862,8 @@ DO ifrq = 1, 1, 1 ! 1hr
         CASE ('WRF')
           PRINT *, "WRF time handling"
 
-          sts = NF90_OPEN(iflWRFin, IOR(NF90_NOWRITE, NF90_MPIIO), ncid_in, comm = MPI_COMM_WORLD, info = MPI_INFO_NULL)
+          sts = NF90_OPEN(iflWRFin, IOR(NF90_NOWRITE, NF90_MPIIO), ncid_in, &
+            comm = MPI_COMM_WORLD, info = MPI_INFO_NULL)
           sts = NF90_INQUIRE(ncid_in, ndims_in, nvars_in, ngatts_in, unlimdimid_in)
           sts = NF90_INQ_VARID(ncid_in, "Times", InVarIdRec)
           sts = NF90_INQUIRE_DIMENSION(ncid_in, unlimdimid_in, &
@@ -886,8 +896,71 @@ DO ifrq = 1, 1, 1 ! 1hr
 
         CASE ('COS')
           PRINT *, "COSMO time handling"
+
+          ! does this work at all?
+          !sts = NF90_OPEN(iflWRFin, IOR(NF90_NOWRITE, NF90_MPIIO), ncid_in, &
+          !  comm = MPI_COMM_WORLD, info = MPI_INFO_NULL)
+          !sts = NF90_INQ_VARID(ncid_in, "time", InVarIdRec)
+          !sts = NF90_GET_VAR(ncid_in, InVarIdRec, time_test(:))
+          !sts = NF90_CLOSE(ncid_in)
+          !PRINT *, "time_test: ", time_test
+          sts = NF90_OPEN('lffd2020011320.nc', NF90_NOWRITE, ncid_in)
+          sts = NF90_INQ_VARID(ncid_in, "T_2M", varid)
+          sts = NF90_GET_VAR(ncid_in, varid, data_in(:,:), &
+          START = (/ xoffset, yoffset, 1 /), COUNT = (/ xfocus, yfocus, 1 /) )
+          sts = NF90_CLOSE(ncid_in)
+          PRINT *, iflWRFin
+          PRINT *, SHAPE(data_in)
+          PRINT *, data_in(500:510,500)
+
+          ! real bad, but quick and does not clutter the rest of the code
           ! read using CDI, and put into the same variables -> 
           ! then the time matching needs not to be changed
+          ! needed from this: 
+          ! - number of input timesteps: InDimLenRec
+          ! - actual time information to be split up: InVarDataRec
+          ! -> generate: InDateTime* and InDateTimeCombined
+          ! needs currently one input timestep per file, 
+          ! alternatively mix above code and this code
+          ! or run the CDI functions over like 999 and then check 
+          ! and count the sts var
+          ! perhaps the https://code.mpimet.mpg.de/projects/cdi/embedded/cdi_fman.html
+          ! is too old from 2020; one might use a system call to date 
+          ! to calc the timestamp efficiently
+          ! date -u --date="2020-01-01 1162800 seconds" '+%Y-%m-%d_%H:%M:%S'
+          ! UDUNITS does not help either
+
+          ! CDI cannot query the size of the time variable
+          ! sts is 0 once no new time information in found
+          ! just loop until 999 and count
+          ! this works
+          streamID = streamOpenRead(iflWRFin)
+          vlistID = streamInqVlist(streamID)
+          taxisID = vlistInqTaxis(vlistID)
+          DO tsID = 0, nts-1
+            sts = streamInqTimestep(streamID, tsID)
+            vdate = taxisInqVdate(taxisID)
+            vtime = taxisInqVtime(taxisID)
+            WRITE(0, *)"read timestep ",sts,tsID+1,"date=",vdate,"time=",vtime
+          END DO
+          call streamClose(streamID)
+
+          ! 1 should be a counter form above
+          InDimLenRec = 1
+          ALLOCATE(InVarDataRec(InDimLenRec))
+          ! reproduce the string from WRF from the COSMO time information
+          ! this is not ideal at all
+          ! vdate vtime -> InVarDataRec
+          WRITE(vdate_str,'(I8)') vdate
+          WRITE(vtime_str,'(I6.6)') vtime
+          InVarDataRec(1) = vdate_str(1:4)//'-'//vdate_str(5:6)//'-'//vdate_str(7:8)//'_'//&
+            vtime_str(1:2)//':'//vtime_str(3:4)//':'//vtime_str(5:6)
+          PRINT *, "RCM input file time coverage:"
+          PRINT *, InVarDataRec(1), " to ", InVarDataRec(InDimLenRec)
+
+          !PRINT *, "crash here"
+          !STOP
+
         CASE DEFAULT
           PRINT *, "invalid model specified"
           STOP
@@ -1780,7 +1853,7 @@ DO ifrq = 1, 1, 1 ! 1hr
 ! e.g. in the wrfxtrm files the min/max are for day1 are stored in 00UTC field
 ! of day2
   
-          PRINT *, "reading WRF sim. res. = ", TRIM(InVarDataRec(it)), it
+          PRINT *, "reading sim. res. = ", TRIM(InVarDataRec(it)), it
           !PRINT *, SIZE(TimeRefArraySubset,1)
           !PRINT *, SHAPE(TimeRefArraySubset)
           !PRINT *, "current transferred input time: ", InDateTimeYear(it), InDateTimeMonth(it), InDateTimeDay(it), InDateTimeHour(it)
@@ -1826,6 +1899,7 @@ DO ifrq = 1, 1, 1 ! 1hr
           PRINT *, "*** SOME VARS ALWAYS HAVE TO BE READ: (T00), P00 ***"
   
           sts = NF90_OPEN(iflWRFin, NF90_NOWRITE, ncidin)
+          print *, 'is this OK at all????, this is the main opening: ', sts
   
           ! HTr: read actual value of base state temperature T00
           ! vector, 1 value /timestep, usually constant
@@ -1844,9 +1918,11 @@ DO ifrq = 1, 1, 1 ! 1hr
           sts = NF90_INQ_VARID(ncidin, "P00", p00_varid)
           IF ( sts /= NF90_NOERR ) THEN
             P00(1) = 100000.
+            PRINT *, 'hardwired P00'
           ELSE
             sts = NF90_GET_VAR(ncidin, p00_varid, P00(:), &
               START = (/ it /), COUNT = (/ 1 /) )
+            PRINT *, 'imported P00'
           END IF
           
           PRINT *, T00(1), P00(1)
@@ -2945,12 +3021,13 @@ DO ifrq = 1, 1, 1 ! 1hr
               sts = NF90_GET_VAR(ncidin, varid, data_in(:,:), &
                     START = (/ xoffset, yoffset, it+1 /), COUNT = (/ xfocus, yfocus, 1 /) )
             ELSE 
+              PRINT *, xoffset, yoffset, it, xfocus, yfocus 
               sts = NF90_GET_VAR(ncidin, varid, data_in(:,:), &
                     START = (/ xoffset, yoffset, it /), COUNT = (/ xfocus, yfocus, 1 /) )
             END IF
 
-!            PRINT *, 'some sample output 3x3 in the middle of the domain', &
-!              data_in(xfocus/2:(xfocus/2+2),yfocus/2:(yfocus/2+2))
+            PRINT *, 'some sample output 3x3 in the middle of the domain', &
+              data_in(xfocus/2:(xfocus/2+2),yfocus/2:(yfocus/2+2))
 
           END IF
   
@@ -2959,15 +3036,15 @@ DO ifrq = 1, 1, 1 ! 1hr
 !-------------------------------------------------------------------------------
 !-------------------------------------------------------------------------------
 ! some analysis of the data
-!  
-!         PRINT *, "*** STATISTICS BEFORE PROCESSING OF VARIABLES ***"
-!         PRINT *, "(useless if data is stored in other vars than 'data_in')"
-!
-!         print *, "shape of array" , SHAPE(data_in)
-!         print *, "size of array" , SIZE(data_in)
-!         stat_mean = SUM(data_in(:,:))/SIZE(data_in(:,:))
-!         PRINT *, "mean of array", stat_mean
-!
+  
+          PRINT *, "*** STATISTICS BEFORE PROCESSING OF VARIABLES ***"
+          PRINT *, "(useless if data is stored in other vars than 'data_in')"
+
+          print *, "shape of array" , SHAPE(data_in)
+          print *, "size of array" , SIZE(data_in)
+          stat_mean = SUM(data_in(:,:))/SIZE(data_in(:,:))
+          PRINT *, "mean of array", stat_mean
+
 !-------------------------------------------------------------------------------
 !-------------------------------------------------------------------------------
 ! this is where the real processing takes place 
@@ -4182,7 +4259,7 @@ DO ifrq = 1, 1, 1 ! 1hr
 
 !===============================================================================
 
-END PROGRAM WRFCMORizer
+END PROGRAM pCMORizer
 
 !===============================================================================
 ! HTr routines for psl calculation
