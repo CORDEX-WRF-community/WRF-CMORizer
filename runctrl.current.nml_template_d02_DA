@@ -33,7 +33,7 @@
 &filesystem
 !  DirInputSimResRoot =   "/p/scratch/cjjsc39/goergen1/sim/tmp_FPSCONV/tmp_DA/simres",
    DirInputSimResRoot =   ".",
-   DirOutputPostProRoot = "/p/scratch/cjjsc39/goergen1/sim/tmp_FPSCONV/tmp_DA/postpro/CMORized",
+   DirOutputPostProRoot = "/p/scratch/cjjsc39/goergen1/sim/tmp_FPSCONV/tmp_DA/postpro/CMORized_test",
 !  domain = "d01",                        ! for filename generation needed
    domain = "d02",                        ! for filename generation needed
 /
