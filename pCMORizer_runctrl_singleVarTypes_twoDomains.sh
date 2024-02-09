@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH --nodes=1
-#SBATCH --ntasks-per-node=128
+#SBATCH --nodes=2
+#SBATCH --ntasks-per-node=8
 #SBATCH --threads-per-core=1
 #SBATCH --time=00:15:00
 #SBATCH --partition=dc-cpu-devel
