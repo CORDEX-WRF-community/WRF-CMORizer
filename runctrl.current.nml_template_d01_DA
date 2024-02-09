@@ -33,29 +33,29 @@
 &filesystem
 !  DirInputSimResRoot =   "/p/scratch/cjjsc39/goergen1/sim/tmp_FPSCONV/tmp_DA/simres",
    DirInputSimResRoot =   ".",
-   DirOutputPostProRoot = "/p/scratch/cjjsc39/goergen1/sim/tmp_FPSCONV/tmp_DA/postpro/CMORized_test",
+   DirOutputPostProRoot = "/p/scratch/cjjsc39/goergen1/sim/tmp_FPSCONV/tmp_DA/tmp/test_output_UNICAN",
    domain = "d01",                        ! for filename generation needed
 !  domain = "d02",                        ! for filename generation needed
 /
 &model_config
    ts = '0000', !'__YYYY__', !'__YYYY_ts__',                           ! 2009 2012 2014 can be used for pattern matching with filenames, set to '0000' to use all files that are found
    te = '0000', !'__YYYY__', !'__YYYY_te__',                           ! 2009 2012 2014 can be used for pattern matching with filenames, set to '0000' to use all files that are found
-   nx = 359,                              ! EUR-15 raw output x-dim, incl. relaxation zone, unstaggered, changed to 359x350 w/ EUR-15
-   ny = 350,                              ! EUR-15 raw output x-dim, incl. relaxation zone, umstaggered
+   nx = 444,                              ! EUR-15 raw output x-dim, incl. relaxation zone, unstaggered, changed to 359x350 w/ EUR-15
+   ny = 432,                              ! EUR-15 raw output x-dim, incl. relaxation zone, umstaggered
 !  nx = 490,                              ! ALP-3 WRF grid spec with A-runs (CM/WL)
 !  ny = 440,                              ! ALP-3 spec changed with the B-runs (evaluation): 490x440
-   nz = 49,                               ! number of vertical levels, unstaggered
+   nz = 53,                               ! number of vertical levels, unstaggered
    xoffset = 10,                          ! zone to be cut away in x-dir. (e.g., boundary relax zone) spec_bdy_width
    yoffset = 10,                          ! many grps do not remove the boundary relaxation zone, in agreement with UCAN boundary relaxation zone is removed
-   xfocus = 339,                          ! EUR-11 official grid x-dim, unknown from geo_em file, nx-2*xoffset
-   yfocus = 330,                          ! EUR-11 official grid y-dim, unknown from geo_em file, ny-2*yoffset
+   xfocus = 424,                          ! EUR-11 official grid x-dim, unknown from geo_em file, nx-2*xoffset
+   yfocus = 412,                          ! EUR-11 official grid y-dim, unknown from geo_em file, ny-2*yoffset
 !  xfocus = 470,                          ! ALP-3
 !  yfocus = 420,                          ! ALP-3
    tstot = '1949-12-01_00:00:00',         ! start of the main time vector, per protocol, do not change
    tetot = '2101-01-01_00:00:00',         ! end of the main time vector, do not change
 /
 &static_fields
-   PnFnGeo = '/p/scratch/cjjsc39/goergen1/sim/tmp_FPSCONV/CORDEX-FPSCEM_EUR-15-ALP-3_ECMWF-ERAINT_evaluation_r1i1p1_FZJ-IBG3-WRF381BA_v00aJurecaCpuPrepTt19982014/geo_CORINE_HWSD_from_JMi_cb01refined_use_this/geo_em.d01.nc'
+   PnFnGeo = '/p/scratch/cjjsc39/goergen1/sim/tmp_FPSCONV/tmp_DA/tmp/test_input_UNICAN_geo/geo_em.d01.nc'
 !  PnFnGeo = '/p/scratch/cjjsc39/goergen1/sim/tmp_FPSCONV/CORDEX-FPSCEM_EUR-15-ALP-3_ECMWF-ERAINT_evaluation_r1i1p1_FZJ-IBG3-WRF381BA_v00aJurecaCpuPrepTt19982014/geo_CORINE_HWSD_from_JMi_cb01refined_use_this/geo_em.d02.nc'
 !  PnFnGeo = './geo_em.d01.nc'
 !  PnFnGeo = './geo_em.d02.nc'

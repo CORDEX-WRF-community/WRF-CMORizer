@@ -39,7 +39,7 @@ MODULE NamelistHandling
   IMPLICIT NONE
   SAVE
 
-  INTEGER, PARAMETER :: nvars = 39 ! 39 maximum number of vars per namelist, keep const at max number
+  INTEGER, PARAMETER :: nvars = 16 ! 39 maximum number of vars per namelist, keep const at max number
 
   CHARACTER (len = 300) :: Conventions, conventionsURL, contact, experiment, &
     driving_experiment, experiment_id, driving_model_id, driving_model_ensemble_member, &
@@ -621,7 +621,7 @@ fnNMLvar(22) = "runctrl.vars.std_sfc_test.nml"
   !CALL SYSTEM("find " // TRIM(DirInputSimResRoot) // "/" // TRIM(domain) // " -name wrfout*" // TRIM(domain) // "*_" // TRIM(ts) // "*.nc -o -name wrfout*" // TRIM(domain) // "*_" // TRIM(te) // "*.nc | sort > " // tmpfileFL)
 
   IF ( rank == 0 ) THEN
-    CALL SYSTEM("find " // TRIM(DirInputSimResRoot) // "/ -name 'wrfout*" // TRIM(domain) // "*" // TRIM(fl_filter) // "*.nc' | sort > " // tmpfileFL_std)
+    CALL SYSTEM("find " // TRIM(DirInputSimResRoot) // "/ -name 'wrfout*" // TRIM(domain) // "*" // TRIM(fl_filter) // "' | sort > " // tmpfileFL_std)
   END IF
   CALL mpi_barrier(MPI_COMM_WORLD, ierr)
   IF ( ierr /= MPI_SUCCESS ) STOP "Problem with MPI_BARRIER"
@@ -773,7 +773,7 @@ fnNMLvar(22) = "runctrl.vars.std_sfc_test.nml"
     CASE ("runctrl.vars.nml_Sophie") 
       nvar_nml = 2
     CASE ("runctrl.vars.std_sfc.nml") 
-      nvar_nml = 39
+      nvar_nml = 16
     CASE ("runctrl.vars.std_presslev.nml") 
       nvar_nml = 36
     CASE ("runctrl.vars.std_minmax.nml") 
