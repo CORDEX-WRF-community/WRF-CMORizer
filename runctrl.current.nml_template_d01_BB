@@ -4,7 +4,7 @@
    contact = "cordex@fz-juelich.de",
    experiment = "Evaluation run with forcing from ECMWF-ERAINT, r1i1p1, 1st-nest run", 
 !  experiment = "Evaluation run with forcing from downscaled ECMWF-ERAINT, r1i1p1, 2nd-nest run",
-   driving_experiment = "ECMWF-ERAINT; evaluation; r1i1p1",
+   driving_experiment = "ECMWF-ERAINT, evaluation, r1i1p1",
    experiment_id = "evaluation",
    driving_model_id = "ECMWF-ERAINT",
    driving_model_ensemble_member = "r1i1p1",

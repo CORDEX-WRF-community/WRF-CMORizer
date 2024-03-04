@@ -4,7 +4,7 @@
    contact = "cordex@fz-juelich.de",
    experiment = "Historical run with forcing from SMHI-EC-EARTH, r12i1p1, 1st-nest run", 
 !  experiment = "Historical run with forcing from downscaled SMHI-EC-EARTH, r12i1p1, 2nd-nest run",
-   driving_experiment = "SMHI-EC-EARTH; historical; r12i1p1",
+   driving_experiment = "SMHI-EC-EARTH, historical, r12i1p1",
    experiment_id = "historical",
    driving_model_id = "SMHI-EC-EARTH",
    driving_model_ensemble_member = "r12i1p1",
