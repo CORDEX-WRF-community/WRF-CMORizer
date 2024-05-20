@@ -1,6 +1,6 @@
 # pCMORizer
 
-2023-11-26
+2024-05-20
 
 The pCMORizer is a free open-source software tool to transfer and postprocess raw (regional climate) model ouputs into netCDF files, which comply to the [CMOR](https://cmor.llnl.gov) data standard as used by the [WCRP CORDEX](https://cordex.org) project. The goal is to make the model data standard compliant ([Standards section](#ref_standards)) to be efficiently (i) shared via data servers, such as the [ESGF](https://esgf-data.dkrz.de/projects/esgf-dkrz/) data nodes, and (ii) used in analyses. The tool was developed for the WRF RCM but can also be used with other model outputs after a few adjustments.
 
@@ -14,6 +14,8 @@ The main features of the pCMORizer are (see also [Additional information section
 Fortran-based software tool with some ancilliary bash scripts that also use [cdo](https://code.mpimet.mpg.de/projects/cdo/). pCMORizer.f90 and companion tools are used
 according to the [CORDEX-CMIP3 archive specification](http://is-enes-data.github.io/cordex_archive_specifications.pdf) as part of the [CORDEX WCRP project](https://cordex.org/experiment-guidelines/how-to-submit-data-rcms/). 
 -->
+
+Attention: there is a quick fix for the fx files which need to be applied: `CMORized_data_fixing_after_QA_2.sh`
 
 ## Usage<a name="ref_usage"></a>
 
