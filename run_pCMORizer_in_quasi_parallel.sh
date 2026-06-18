@@ -58,7 +58,7 @@ echo "Changing in pCMORizer.f90 freq_id to $freq_id for the frequency $FREQ"
 
 # Create working directory
 dir_home=$(pwd)
-dir_work=${dir_home}/${PROJECT}/${DOM}_${FREQ}/${YEAR}
+dir_work=${dir_home}/${PROJECT}/${DOM}/${FREQ}/${YEAR}
 mkdir -p ${dir_work}; cd ${dir_work}
 ln -sf ${dir_data_in}/wrf*_${DOM}_${YEAR}* ${dir_work}/
 ln -sf ${dir_data_in}/wrf*_${DOM}_${YEAR_next}-01-01* ${dir_work}/
@@ -78,6 +78,9 @@ cp -f ${dir_home}/generate_vars_namelist.py ${dir_work}/${VARNAME}/
 cp -f ${dir_home}/CORDEX_CMIP6_variables.csv ${dir_work}/${VARNAME}/
 python generate_vars_namelist.py ${VARNAME}
 mv runctrl.vars.${VARNAME}.nml runctrl.vars.nml
+
+# Copy file with the pCMORizer version
+cp ${dir_home}/VERSION.txt ${dir_work}/${VARNAME}/
 
 # Compile the code for the specific varlist
 cp -f ${dir_home}/Makefile ${dir_work}/${VARNAME}/

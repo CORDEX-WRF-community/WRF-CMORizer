@@ -1,4 +1,5 @@
 README.txt
+.vscode
 *.nc
 *.grb
 *.exe
@@ -20,13 +21,10 @@ gitlab_status_on_20171115_before_taking_it_over_again
 related_other_tools
 *.tgz
 *__genmod.f90
-<<<<<<< HEAD
 perf
 .DS_Store
-=======
 nohup*
 *OutErr*
->>>>>>> f80293bad1e5d493174864e4c1dca8d026ac7513
 *err*
 *out*
 20*
