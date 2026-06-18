@@ -1695,9 +1695,9 @@ fnNMLvar(1) = "runctrl.vars.nml"
           ! there is only one variable at a time under processing
 
   
-	    ! Open the file
-            sts = NF90_OPEN(iflWRFin, NF90_NOWRITE, ncidin) 
-     
+	       ! Open the file
+            sts = NF90_OPEN(iflWRFin, NF90_NOWRITE, ncidin)
+
             !- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
             PRINT *, "*** READING OF VARIABLES ***"
