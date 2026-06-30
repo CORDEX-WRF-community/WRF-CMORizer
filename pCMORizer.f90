@@ -3169,17 +3169,19 @@ fnNMLvar(1) = "runctrl.vars.nml"
 ! clivi  [kg m-2] i Ice Water Path
 
             IF ( (var_cmip(ivar) == "clivi")) THEN
-    
-              !t_in(:,:,:) = (theta_in(:,:,:)+T00)*((pp_in(:,:,:)+pb_in(:,:,:))/P00)**(R/cp)
-              !p_in(:,:,:) = pp_in(:,:,:) + pb_in(:,:,:)
-    
+              
+              press(:,:,1) = psf(:,:)
+              press(:,:,nz+1) = p_top
+              
               clivi(:,:) = 0.
-              DO nl = 1,nz - 1
+              DO nl = 1,nz
+                if(nl < nz)
+                  press(:,:,nl) = 0.5 * ( p_in(:,:,nl) + p_in(:,:,nl+1) )
                 clivi(:,:) = clivi(:,:) + (qi_in(:,:,nl) + qs_in(:,:,nl)) * &
-                             p_in(:,:,nl)/(R*t_in(:,:,nl)) * &
-                             ((ph_in(:,:,nl+1)+phb_in(:,:,nl+1)) - &
-                             (ph_in(:,:,nl)+phb_in(:,:,nl)))/gr
+                             (press(:,:,nl)-press(:,:,nl+1))
               END DO
+
+              clivi = clivi/gr
               data_in(:,:) = clivi(:,:)
               WHERE (data_in < 0.) data_in = 0.
             END IF
