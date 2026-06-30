@@ -45,7 +45,7 @@ MODULE NamelistHandling
   	driving_institution_id, driving_source_id, driving_variant_label, grid, institution, &
   	institution_id, license, mip_era, product, project_id, source, &
   	source_id, source_type, version, version_realization, references, tracking_id, &
-	variable_id
+	  title, variable_id
 
   CHARACTER (len = 1000) :: comment
 
@@ -1493,6 +1493,7 @@ fnNMLvar(1) = "runctrl.vars.nml"
               !-----------------------------------------------------------------              
               ! global attributes always included
               sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "WRF_CMORizer_version", cmorizer_version)
+              sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "title", institution_id // " " // source_id // " downscaling of " // driving_source_id // " " // driving_experiment_id // " for " // project_id // " " // domain_id)
               sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "activity_id", activity_id)
               sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "contact", contact)
               sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "Conventions", Conventions)
