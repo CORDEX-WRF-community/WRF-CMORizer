@@ -1193,7 +1193,6 @@ fnNMLvar(1) = "runctrl.vars.nml"
             ! /hpc/shared/int/eva/ramod_WRF_CRPGL/WRFrv021rXXrcc3CpCdx/postpro/
             ! EUR-44/CRPGL/ECMWF-ERAINT/evaluation/r1i1p1/CRPGL-WRFARW331/v1
             pn_out = TRIM(project_id)                   // "/" // &
-                     TRIM(mip_era)                      // "/" // &
                      TRIM(activity_id)                 	// "/" // &
                      TRIM(domain_id)                  	// "/" // &
                      TRIM(institution_id)              	// "/" // &
