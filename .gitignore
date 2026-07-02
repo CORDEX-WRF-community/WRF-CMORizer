@@ -1,5 +1,7 @@
 README.txt
 .vscode
+.agents
+.codex
 *.nc
 *.grb
 *.exe

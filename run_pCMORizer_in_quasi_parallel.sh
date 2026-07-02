@@ -18,7 +18,7 @@
 
 
 # Set the enviroment
-source loadenv.UCAN-IFCA_intel.ini
+source loadenv.ini
 
 # Adjust to your situations
 export YEAR=$1 	
@@ -68,7 +68,12 @@ mkdir -p ${dir_work}/${VARNAME}
 cd ${dir_work}/${VARNAME}
 
 # Adapt general namelist for the seleted variabels
-cp -f ${dir_home}/runctrl.current.nml_template_${DOM}_${PROJECT} ${dir_work}/${VARNAME}/runctrl.current.nml_${DOM}
+template_nml=${dir_home}/runctrl.current.nml_template_${DOM}_${PROJECT}
+if [ ! -f "$template_nml" ]; then
+    echo "Error: Template namelist file $template_nml not found."
+    exit 1
+fi
+cp -f ${template_nml} ${dir_work}/${VARNAME}/runctrl.current.nml_${DOM}
 sed -i "s/__YYYY__/$Y/g" runctrl.current.nml_${DOM}
 sed -i "s/__nvar__/$nvar/g" runctrl.current.nml_${DOM}
 ln -sf runctrl.current.nml_${DOM} runctrl.current.nml

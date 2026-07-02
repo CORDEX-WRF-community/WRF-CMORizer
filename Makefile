@@ -1,5 +1,5 @@
-EBROOTNETCDFMINFORTRAN="full-path-to-netcdf-fortran library"
-EBROOTNETCDF="full-path-to-netcdf-c library"
+ROOT_NETCDF_FORTRAN="full-path-to-netcdf-fortran library"
+ROOT_NETCDF_C="full-path-to-netcdf-c library"
 
 # gfortran flags (uncomment if using gfortran)
 #FC = gfortran
@@ -14,8 +14,8 @@ FCFLAGS = -O2 -assume realloc_lhs -cpp -DSERIAL
 FCFLAGS += -fp-model precise -prec-div -prec-sqrt
 
 # Flags for gfortran and intel (never comment out)
-FCFLAGS += -I$(EBROOTNETCDFMINFORTRAN)/include -I$(EBROOTNETCDF)/include
-LDFLAGS = -L$(EBROOTNETCDFMINFORTRAN)/lib -lnetcdff -L${EBROOTNETCDF}/lib -lnetcdf
+FCFLAGS += -I$(ROOT_NETCDF_FORTRAN)/include -I$(ROOT_NETCDF_C)/include
+LDFLAGS = -L$(ROOT_NETCDF_FORTRAN)/lib -lnetcdff -L${ROOT_NETCDF_C}/lib -lnetcdf
 
 PROGRAMS = pCMORizer
 
