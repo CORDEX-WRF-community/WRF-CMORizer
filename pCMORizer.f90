@@ -1337,14 +1337,14 @@ fnNMLvar(1) = "runctrl.vars.nml"
                 sts = nf90_def_var(ncid, "x", NF90_DOUBLE, (/ x_dimid /), xlon_varid, fletcher32 = .true.)
                 sts = nf90_def_var_deflate(ncid, xlon_varid, 1, 1, 1)
                 sts = nf90_put_att(ncid, xlon_varid, "standard_name", "projection_x_coordinate")
-                sts = nf90_put_att(ncid, xlon_varid, "long_name", "X Coordinate Of Projection")
+                sts = nf90_put_att(ncid, xlon_varid, "long_name", "x coordinate of projection")
                 sts = nf90_put_att(ncid, xlon_varid, "units", "m")
                 sts = nf90_put_att(ncid, xlon_varid, "axis", "X")
   
                 sts = nf90_def_var(ncid, "y", NF90_DOUBLE, (/ y_dimid /), ylat_varid, fletcher32 = .true.)
                 sts = nf90_def_var_deflate(ncid, ylat_varid, 1, 1, 1)
                 sts = nf90_put_att(ncid, ylat_varid, "standard_name", "projection_y_coordinate")
-                sts = nf90_put_att(ncid, ylat_varid, "long_name", "Y Coordinate Of Projection")
+                sts = nf90_put_att(ncid, ylat_varid, "long_name", "y coordinate of projection")
                 sts = nf90_put_att(ncid, ylat_varid, "units", "m")
                 sts = nf90_put_att(ncid, ylat_varid, "axis", "Y")
  
