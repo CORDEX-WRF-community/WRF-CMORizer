@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # coding: utf-8
 #
-# runctrl.vars.nml generator 
-# The script generates namelist for CORDEX CMIP6 variables based on the list published on zenodo:
-# https://zenodo.org/records/8414798
-# 
+# runctrl.vars.nml generator
+# The script generates namelist for CORDEX CMIP6 variables based on the list published on github:
+# https://raw.githubusercontent.com/WCRP-CORDEX/data-request-table/main/data-request/dreq_default.csv
+#
 # To run the script a csv file with variables containing all the metadata is necessary to be placed in the running directory.
 # The csv file is CORDEX_CMIP6_variables.csv
 #
@@ -18,316 +18,173 @@
 #
 # Contact: milovacj@unican.es
 
-wrfpress_levels=[1000, 925, 850, 700, 500, 200]
 
-def print_instructions():
-    """Prints instructions."""
-    instructions = """
-    Usage:
-    generate_vars_namelist.py [options]
+import csv, sys, urllib.request
+from pathlib import Path
 
-    Options:
-        custom <variables>  (list variables in form - var1 var2 var3 ...)
-            output: runctrl.vars.custom.nml
+URL = "https://raw.githubusercontent.com/WCRP-CORDEX/data-request-table/main/data-request/dreq_default.csv"
+REQUEST = Path("data-request.csv")
+WRF = Path("CORDEX_CMIP6_variables.csv")
+FILETYPE = "s"  # s=wrfout; p=wrfpress; x=wrfxtrm
 
-        <variable>  (list variable in form - var1)
-        output: runctrl.vars.var1.nml
+FREQ = {
+    "fx":  ("timefx",  "cmfx"),
+    "1hr": ("time1hr", "cm1hr"),
+    "3hr": ("time3hr", "cm3hr"),
+    "6hr": ("time6hr", "cm6hr"),
+    "day": ("timeDay", "cmDay"),
+    "mon": ("timeMon", "cmMon"),
+    "sea": ("timeSea", "cmSea"),
+}
 
-        <variable_list>  (one of already set variable lists, e.g. - core)
-        output: runctrl.vars.variable_list.nml    
+PRIORITIES = {"CORE", "TIER1", "TIER2"}
 
-            variable_lists:
-                core, trier1, trier2, 
-                trier1_sfc, trier1_int, trier1_plevel, trier1_height,
-                trier2_sfc, trier2_int, trier2_plevel, trier2_height,trier2_fx
-    """
-    print(instructions)
 
-# Define all the functions:
-def generate_namelist(varlist, nvars):
-    
-    # Set header and footer:
-    header = "&vars\n"
-    footer = "/\n"
-    
-    # Set titles:
-    titles = [
-        '   cordexID',
-        '   var_wrf',
-        '   var_cmip',
-        '   standard_name',
-        '   long_name',
-        '   units',
-        '   height',
-        '   plevel',
-        '   positive',
-        '   timefx',
-        '   cmfx',
-        '   time1hr',
-        '   cm1hr',
-        '   time3hr',
-        '   cm3hr',
-        '   time6hr',
-        '   cm6hr',
-        '   timeDay',
-        '   cmDay',
-        '   timeMon',
-        '   cmMon',
-        '   timeSea',
-        '   cmSea',
-        '   filetype',
-        '   interpolate'
-    ]
-    
-    # Calculate the maximum length of each column
-    column_length = max(len(title) for title in titles) + 5  # Add padding for better readability
-    
-    # Create lines in the template
-    variable_lines = ""
-    for title,j in zip(titles,range(0,len(titles))):
-        variable_lines += "{:<{}} = ".format(title,20)
-        for i in range(0,nvars):
-            if varlist[i] is None:
-                print(f"Warning:{title} for {varnames[i]} is not available.")
-            else:
-                if i > len(varlist)-1:
-                    nspace = max(len(varline) for varline in fill_varlist) + 1  # Add padding for better readability
-                    variable_lines += "{:<{}},".format(fill_varlist[j], nspace)
-            
-                else:
-                    nspace = max(len(varline) for varline in varlist[i]) + 1  # Add padding for better readability
-                    variable_lines += "{:<{}},".format(varlist[i][j], nspace)
-            
-        variable_lines += "\n"
-
-    # Create the template
-    template = f"{header}{variable_lines}{footer}"
-    return template
-
-def map_to_tf(value):
-    return {'x': 'T', 'other': 'F'}.get(value, 'F')
-
-def find_height(name):
-    numbers = ''.join(char for char in name if char.isdigit())
-    value = numbers if numbers else "-999"
-    if value == "999":
-        value = "-999"
-    return value
-
-def create_vararray(varname, filepath):
-    import csv
-
-    def read_variable_info(filepath):
-        data = []
-
-        with open(filepath, 'r') as file:
-            reader = csv.DictReader(file, delimiter=',')
-            for row in reader:
-                data.append(row)
-
+def read_csv(path, key, required):
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        r = csv.DictReader(f)
+        r.fieldnames = [x.strip() for x in r.fieldnames]
+        if missing := set(required) - set(r.fieldnames):
+            raise RuntimeError(f"{path}: missing {', '.join(sorted(missing))}")
+        data = {}
+        for row in r:
+            row = {k.strip(): (v or "").strip() for k, v in row.items() if k}
+            if row.get(key):
+                data.setdefault(row[key], []).append(row)
         return data
 
-    filepath = filepath  # Change this to the actual file path
-    variable_info = read_variable_info(filepath)
 
-    # Print the variable information
-    for entry in variable_info:
-        if entry['output variable name']==varname:
-            if entry['ag']=="a":
-                cm1hr = cm3hr = cm6hr = cmDay = "'mean'"
-            elif varname=="sund":
-                cm1hr = cm3hr = cm6hr = cmDay = "'sum'"
-            elif "max" in varname:
-                cm1hr = cm3hr = cm6hr = cmDay = "'max'"
-            elif "min" in varname:
-                cm1hr = cm3hr = cm6hr = cmDay = "'min'"
-            else:
-                cm1hr = cm3hr = cm6hr = "'point'"
-                cmDay = "'mean'"
-                
-            if "down" in entry['standard_name'] or \
-            "incoming" in entry['standard_name'] or \
-            varname=="rsdt":
-                positive = f"'down'"
-            elif "upward" in entry['standard_name'] or \
-            "upwelling" in entry['standard_name'] or \
-            "outgoing"  in entry['standard_name']:
-                positive = f"'up'"
-            else:
-                positive = f"'-999'"                
-             
-                
-            height="-999"                 
-            plevel="-999"
-            
-            if any(char.isdigit() for char in entry['WRF variable']):
-                height = find_height(entry['WRF variable'])  
-              
-            
-            for name in ["ua","va","wa","ta","zg","hus"]:
-                if name in varname:
-                    if "m" in varname:       
-                        height = find_height(varname)
-                    else:
-                        plevel = find_height(varname)                          
-                         
-            if "tasmax" in varname or "tasmin" in varname:
-                #ftype="'x'"
-                ftype="'s'"
-            #elif plevel != "-999" and "wa" not in varname and plevel in map(str, wrfpress_levels): 
-            #    ftype="'p'"               
-            else:
-                ftype="'s'"            
-                                         
+def agg(row):
+    text = row.get("cell_methods", "").lower()
+    if "time:" not in text:
+        return ""
+    return {
+        "mean": "mean", "point": "point", "maximum": "max",
+        "minimum": "min", "max": "max", "min": "min", "sum": "sum"
+    }.get(text.split("time:")[-1].strip().split()[0], "")
 
-            vararray = ["999",\
-                        f"'{entry['WRF variable']}'",\
-                        f"'{entry['output variable name']}'",\
-                        f"'{entry['standard_name']}'",\
-                        f"'{entry['long_name']}'",\
-                        f"'{entry['units']}'",\
-                       height,\
-                       plevel,\
-                       positive,\
-                       "T",\
-                       "'point'",
-                       "T",\
-                       cm1hr,\
-                       "T",\
-                       cm3hr,\
-                       "T",\
-                       cm6hr,\
-                       "T",\
-                       cmDay,\
-                       "T",\
-                       "'mean'",\
-                       "F",\
-                       "'mean'",\
-                       ftype,\
-                       "T",\
-                      ]   
-            return vararray
 
-def create_multi_vararray(filepath,*varnames):
-    result = []
-    
-    for varname in varnames:
-        vararray = create_vararray(varname,filepath)
-        result.append(vararray)
-    
+def positive(var, rows):
+    s = " ".join(r.get("standard_name", "").lower() for r in rows)
+    if "down" in s or "incoming" in s or var in {"rsdt", "hfso"}:
+        return "'down'"
+    if "upward" in s or "upwelling" in s or "outgoing" in s:
+        return "'up'"
+    return "'-999'"
+
+
+def levels(var):
+    v = var.lower()
+    if any(x in v for x in ("tas", "huss", "hurs")):
+        return 2, "-999"
+    if any(x in v for x in ("uas", "vas", "sfcwind")):
+        return 10, "-999"
+
+    n = "".join(c for c in var if c.isdigit())
+    if not any(x in var for x in ("ua", "va", "wa", "ta", "zg", "hus")):
+        return "-999", "-999"
+    return (n or "-999", "-999") if var.endswith("m") else ("-999", n or "-999")
+
+
+def get_variables(args, request):
+    groups = {x.upper() for x in args if x.upper() in PRIORITIES}
+    if groups:
+        return [
+            v for v, rows in request.items()
+            if any(r.get("priority", "").upper() in groups for r in rows)
+        ]
+    return [v for v in dict.fromkeys(args) if v in request]
+
+
+def create_metadata(var, request, wrf):
+    rows, wrf_rows = request.get(var, []), wrf.get(var, [])
+    if not rows or not wrf_rows:
+        return None
+
+    height, plevel = levels(var)
+
+    result = {
+        "cordexID": "999",
+        "var_wrf": f"'{wrf_rows[0]['WRF variable']}'",
+        "var_cmip": f"'{var}'",
+        "standard_name": f"'{rows[0]['standard_name']}'",
+        "long_name": f"'{rows[0]['long_name']}'",
+        "units": f"'{rows[0]['units']}'",
+        "height": height,
+        "plevel": plevel,
+        "positive": positive(var, rows),
+        "filetype": f"'{FILETYPE}'",
+        "comment": f"'{rows[0]['comment']}'",
+    }
+
+    a = {
+        r["frequency"]: agg(r)
+        for r in rows
+        if r.get("frequency") in FREQ
+    }
+
+    a["fx"] = "point"
+    a["1hr"] = a.get("1hr") or a.get("3hr") or a.get("6hr") or "point"
+    a["3hr"] = a.get("3hr") or "point"
+    a["6hr"] = a.get("6hr") or "point"
+    a["day"] = a.get("day") or "mean"
+    a["mon"] = a.get("mon") or "mean"
+    a["sea"] = a.get("sea") or "mean"
+
+    for f, (t, c) in FREQ.items():
+        result[t], result[c] = "T", f"'{a[f]}'"
+
     return result
 
 
-# Complete lists of core, trier1, and trier2 CORDEX-CMIP6 variables:
-core = ('tas', 'tasmax', 'tasmin', 'pr', 'evspsbl', 'huss', 'hurs', 'ps', 
-                 'psl', 'sfcWind', 'uas', 'vas', 'clt', 'rsds', 'rlds', 'orog', 'sftlf')
+def namelist(variables):
+    titles = [
+        "cordexID", "var_wrf", "var_cmip", "standard_name",
+        "long_name", "units", "height", "plevel", "positive",
+        "timefx", "cmfx", "time1hr", "cm1hr", "time3hr", "cm3hr",
+        "time6hr", "cm6hr", "timeDay", "cmDay", "timeMon", "cmMon",
+        "timeSea", "cmSea", "filetype", "comment"
+    ]
 
-trier1 = ('ts', 'tsl', 'prc', 'prhmax', 'prsn', 'mrros', 'mrro', 'snm', 'tauu', \
-                   'tauv', 'sfcWindmax', 'sund', 'rsdsdir', 'rsus', 'rlus', 'rlut', 'rsdt', \
-                   'rsut', 'hfls', 'hfss', 'mrfso', 'mrfsos', 'mrsfl', 'mrso', 'mrsos', \
-                   'mrsol', 'snw', 'snc', 'snd', 'siconca', 'zmla', 'prw', 'clwvi', 'clivi', \
-                   'ua1000', 'ua925', 'ua850', 'ua700', 'ua600', 'ua500', 'ua400', 'ua300', \
-                   'ua250', 'ua200', 'va1000', 'va925', 'va850', 'va700', 'va600', 'va500', \
-                   'va400', 'va300', 'va250', 'va200', 'ta1000', 'ta925', 'ta850', 'ta700', \
-                   'ta600', 'ta500', 'ta400', 'ta300', 'ta250', 'ta200', 'hus1000', 'hus925', \
-                   'hus850', 'hus700', 'hus600', 'hus500', 'hus400', 'hus300', 'hus250', \
-                   'hus200', 'zg1000', 'zg925', 'zg850', 'zg700', 'zg600', 'zg500', 'zg400', \
-                   'zg300', 'zg250', 'zg200', 'wa1000', 'wa925', 'wa850', 'wa700', 'wa600', \
-                   'wa500', 'wa400', 'wa300', 'wa250', 'wa200', 'ua50m', 'ua100m', 'ua150m', \
-                   'va50m', 'va100m', 'va150m', 'ta50m', 'hus50m')
+    width = max(len(str(v.get(t, ""))) for t in titles for v in variables)
 
-trier2 = ('evspsblpot', 'wsgsmax', 'clh', 'clm', 'cll', 'rsdscs', 'rldscs', \
-                   'rsuscs', 'rluscs', 'rsutcs', 'rlutcs', 'z0', 'CAPE', 'LI', 'CIN', \
-                   'CAPEmax', 'LImax', 'CINmax', 'od550aer', 'ua150', 'ua100', 'ua70', \
-                   'ua50', 'ua30', 'ua20', 'ua10', 'va150', 'va100', 'va70', 'va50', \
-                   'va30', 'va20', 'va10', 'ta150', 'ta100', 'ta70', 'ta50', 'ta30', \
-                   'ta20', 'ta10', 'hus150', 'hus100', 'hus70', 'hus50', 'hus30', \
-                   'hus20', 'hus10', 'zg150', 'zg100', 'zg70', 'zg50', 'zg30', 'zg20', \
-                   'zg10', 'wa150', 'wa100', 'wa70', 'wa50', 'wa30', 'wa20', 'wa10', \
-                   'ua750', 'va750', 'ta750', 'hus750', 'zg750', 'wa750', 'ua200m', \
-                   'ua250m', 'ua300m', 'va200m', 'va250m', 'va300m', 'sftgif', 'mrsofc', \
-                   'rootd', 'sftlaf', 'sfturf', 'dtb', 'areacella')
-
-# Variables separated in smaller chunks for trier1 and trier2
-trier1_sfc = ('ts', 'tsl', 'prc', 'prhmax', 'prsn', 'mrros', 'mrro', 'snm', 'tauu', \
-                   'tauv', 'sfcWindmax', 'sund', 'rsdsdir', 'rsus', 'rlus', 'rlut', 'rsdt', \
-                   'rsut', 'hfls', 'hfss', 'mrfso', 'mrfsos', 'mrsfl', 'mrso', 'mrsos', \
-                   'mrsol', 'snw', 'snc', 'snd', 'siconca', 'zmla', 'prw', 'clwvi', 'clivi')
-
-trier1_int = ('prw', 'clwvi', 'clivi')
-
-trier1_plevel = ( 'ua1000', 'ua925', 'ua850', 'ua700', 'ua600', 'ua500', 'ua400', 'ua300', \
-                   'ua250', 'ua200', 'va1000', 'va925', 'va850', 'va700', 'va600', 'va500', \
-                   'va400', 'va300', 'va250', 'va200', 'ta1000', 'ta925', 'ta850', 'ta700', \
-                   'ta600', 'ta500', 'ta400', 'ta300', 'ta250', 'ta200', 'hus1000', 'hus925', \
-                   'hus850', 'hus700', 'hus600', 'hus500', 'hus400', 'hus300', 'hus250', \
-                   'hus200', 'zg1000', 'zg925', 'zg850', 'zg700', 'zg600', 'zg500', 'zg400', \
-                   'zg300', 'zg250', 'zg200', 'wa1000', 'wa925', 'wa850', 'wa700', 'wa600', \
-                   'wa500', 'wa400', 'wa300', 'wa250', 'wa200')
-
-trier1_height = ('ua50m', 'ua100m', 'ua150m', 'va50m', 'va100m', 'va150m', 'ta50m', 'hus50m')
-
-trier2_sfc = ('evspsblpot', 'wsgsmax', 'rsdscs', 'rldscs', 'rsuscs', 'rluscs', 'rsutcs', 'rlutcs', 'z0') 
-
-trier2_int = ( 'clh', 'clm', 'cll', 'CAPE', 'LI', 'CIN','CAPEmax', 'LImax', 'CINmax', 'od550aer')
-                       
-trier2_plevel = ( 'ua150', 'ua100', 'ua70', \
-                   'ua50', 'ua30', 'ua20', 'ua10', 'va150', 'va100', 'va70', 'va50', \
-                   'va30', 'va20', 'va10', 'ta150', 'ta100', 'ta70', 'ta50', 'ta30', \
-                   'ta20', 'ta10', 'hus150', 'hus100', 'hus70', 'hus50', 'hus30', \
-                   'hus20', 'hus10', 'zg150', 'zg100', 'zg70', 'zg50', 'zg30', 'zg20', \
-                   'zg10', 'wa150', 'wa100', 'wa70', 'wa50', 'wa30', 'wa20', 'wa10', \
-                   'ua750', 'va750', 'ta750', 'hus750', 'zg750', 'wa750') 
-                        
-trier2_height = ('ua200m', 'ua250m', 'ua300m', 'va200m', 'va250m', 'va300m')
-                          
-trier2_fx = ( 'sftgif', 'mrsofc', 'rootd', 'sftlaf', 'sfturf', 'dtb', 'areacella')
+    return "&vars\n" + "\n".join(
+        f"   {t:<17} = " +
+        " ".join(f"{v.get(t, '')!s:<{width}} ," for v in variables)
+        for t in titles
+    ) + "\n/\n"
 
 
-# Running the script:
-import sys
+# ============================================================
+# RUN
+# ============================================================
 
-varlists_dic = {
-    'core': core,
-    'trier1': trier1,
-    'trier2': trier2,
-    'trier1_sfc': trier1_sfc,
-    'trier1_int': trier1_int,
-    'trier1_plevel': trier1_plevel,
-    'trier1_height': trier1_height,
-    'trier2_sfc': trier2_sfc,
-    'trier2_int': trier2_int,
-    'trier2_plevel': trier2_plevel,
-    'trier2_height': trier2_height,
-    'trier2_fx': trier2_fx,
-}
+args = sys.argv[1:]
+name = "_".join(args)
 
-def write_namelist_file(filepath, template):
-    try:
-        with open(filepath, "w") as f:
-            f.write(template)
-        print(f"Namelist file created successfully at {filepath}")
-    except Exception as e:
-        print(f"Error writing namelist file: {e}")
+if not args:
+    raise SystemExit("Usage: python generate_namelist.py <variable> [variable ...]")
 
-def main():
-    if len(sys.argv) < 2:
-        print("Error: Too few arguments")
-        print_instructions()
-        sys.exit(1)
+urllib.request.urlretrieve(URL, REQUEST)
 
-    filepath = "CORDEX_CMIP6_variables.csv"
-    varlist = sys.argv[1:]
-    output_file = f"runctrl.vars.{varlist[0]}.nml"
+request = read_csv(
+    REQUEST, "out_name",
+    {"out_name", "frequency", "units", "long_name",
+     "standard_name", "cell_methods", "priority", "comment"}
+)
 
-    print(f"Processing variables: {varlist}")
+wrf = read_csv(
+    WRF, "output variable name",
+    {"output variable name", "WRF variable"}
+)
 
-    vararray = create_multi_vararray(filepath, *varlist)
-    if vararray:
-        template = generate_namelist(vararray, len(vararray))
-        write_namelist_file(output_file, template)
-    else:
-        print("No valid variables found to process")
+variables = get_variables(args, request)
+result = [v for x in variables if (v := create_metadata(x, request, wrf))]
 
-if __name__ == "__main__":
-    main()
+if not result:
+    raise RuntimeError("No variables could be created.")
+
+output = Path(f"runctrl.vars.{name}.nml")
+output.write_text(namelist(result), encoding="utf-8")
+
+print(f"Created: {output}")
