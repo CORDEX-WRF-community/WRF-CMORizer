@@ -114,25 +114,26 @@ def create_metadata(var, request, wrf):
         "plevel": plevel,
         "positive": positive(var, rows),
         "filetype": f"'{FILETYPE}'",
-        "comment": f"'{rows[0]['comment']}'",
+        "interpolate": "F",
     }
 
-    a = {
+    # Frequencies actually requested for this variable
+    requested = {
         r["frequency"]: agg(r)
         for r in rows
         if r.get("frequency") in FREQ
     }
 
-    a["fx"] = "point"
-    a["1hr"] = a.get("1hr") or a.get("3hr") or a.get("6hr") or "point"
-    a["3hr"] = a.get("3hr") or "point"
-    a["6hr"] = a.get("6hr") or "point"
-    a["day"] = a.get("day") or "mean"
-    a["mon"] = a.get("mon") or "mean"
-    a["sea"] = a.get("sea") or "mean"
-
     for f, (t, c) in FREQ.items():
-        result[t], result[c] = "T", f"'{a[f]}'"
+        if f in requested:
+            result[t] = "T"
+            if f == "fx":
+                result[c] = "'point'"
+            else:
+                result[c] = f"'{requested[f]}'"
+        else:
+            result[t] = "F"
+            result[c] = "''"
 
     return result
 
@@ -143,7 +144,7 @@ def namelist(variables):
         "long_name", "units", "height", "plevel", "positive",
         "timefx", "cmfx", "time1hr", "cm1hr", "time3hr", "cm3hr",
         "time6hr", "cm6hr", "timeDay", "cmDay", "timeMon", "cmMon",
-        "timeSea", "cmSea", "filetype", "comment"
+        "timeSea", "cmSea", "filetype", "interpolate"
     ]
 
     width = max(len(str(v.get(t, ""))) for t in titles for v in variables)
@@ -165,7 +166,9 @@ name = "_".join(args)
 if not args:
     raise SystemExit("Usage: python generate_namelist.py <variable> [variable ...]")
 
-urllib.request.urlretrieve(URL, REQUEST)
+
+if not Path(REQUEST).exists():
+    urllib.request.urlretrieve(URL, REQUEST)
 
 request = read_csv(
     REQUEST, "out_name",
