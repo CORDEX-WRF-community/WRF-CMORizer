@@ -225,7 +225,7 @@ INTEGER :: varid, x_varid, lon_varid, lat_varid, rlon_varid, rlat_varid, hgt_var
   sfcevp_varid, potevp_varid, sfroff_varid, udroff_varid, acsnom_varid, q2_varid, &
   sinalpha_varid, cosalpha_varid, plev_varid, plevbnds_varid, psfc_varid, &
   depth_varid, soillayerbnds_varid, cd_varid, xlon_varid, ylat_varid, t00_varid, p00_varid, &
-  mask_varid, sh2o_varid
+  mask_varid, sh2o_varid, ptop_varid
 
 ! input data general query
 INTEGER :: ncid_in, ndims_in, nvars_in, ngatts_in, unlimdimid_in
@@ -261,7 +261,9 @@ REAL :: &
   ! vertical interpolation
   slope         , &
   low_lev       , &
-  high_lev
+  high_lev       
+
+REAL, DIMENSION(1) ::  ptop_in
 
 ! Time vec stuff
 REAL(KIND=8), DIMENSION(:), ALLOCATABLE :: &
@@ -295,11 +297,6 @@ REAL, DIMENSION(:,:), ALLOCATABLE :: &
   li            , &
   lcl           , &
   lfc           , &
-  prw           , &
-  clwvi         , &
-  clivi         , &
-  clgvi         , &
-  clhvi         , &
   sinalpha_in   , &
   cosalpha_in   , &
   psfc_in       , &
@@ -357,8 +354,9 @@ REAL, DIMENSION(:,:,:), ALLOCATABLE :: &
   pl_in_u     , &
   pl_in_v     , &
   smois_in    , & 
-  sh2o_in    , & 
-  tslb_in  
+  sh2o_in     , & 
+  tslb_in     , &
+  pres_in
 
 
 ! 4D variables
@@ -1748,7 +1746,7 @@ fnNMLvar(1) = "runctrl.vars.nml"
               !-------------------------------------------------------------------
               ! internal vars needed in the pressure level / 3D processing section
 
-              ! always needed
+              ! Variable allocation              
               
               IF ( (plevel(ivar) /= -999) .AND. ( filetype(ivar) == "s") ) THEN
                 PRINT *, "prep. int. 3D pres. level vars"
@@ -1759,15 +1757,6 @@ fnNMLvar(1) = "runctrl.vars.nml"
                 END IF
               END IF
               
-              PRINT *, "allocate p_in, t_in, ph_fl" 
-              IF (.not. ALLOCATED(p_in))  ALLOCATE( p_in( xfocus, yfocus, nz ), STAT=sts ) 
-              IF (.not. ALLOCATED(t_in))  ALLOCATE( t_in( xfocus, yfocus, nz ), STAT=sts )
-              IF (.not. ALLOCATED(ph_fl)) ALLOCATE( ph_fl( xfocus, yfocus, nz ), STAT=sts )
-
-              IF ( var_cmip(ivar) == "prw" ) THEN
-                IF (.not. ALLOCATED(prw)) ALLOCATE( prw( xfocus, yfocus ), STAT=sts )
-              END IF
-
               IF ( var_cmip(ivar) == "psl" ) THEN
                 IF (.not. ALLOCATED(psl_in)) ALLOCATE( psl_in ( xfocus, yfocus ), STAT=sts )
               END IF
@@ -1783,22 +1772,17 @@ fnNMLvar(1) = "runctrl.vars.nml"
                 IF (.not. ALLOCATED(li))   ALLOCATE( li( xfocus, yfocus ), STAT=sts )
               END IF
 
-              IF ( var_cmip(ivar) == "clwvi" ) THEN
-                IF (.not. ALLOCATED(clwvi)) ALLOCATE( clwvi( xfocus, yfocus ), STAT=sts )
-              ENDIF
+              IF (.not. ALLOCATED(pres_in))  ALLOCATE( pres_in( xfocus, yfocus, nz+1 ), STAT=sts )
+              IF (.not. ALLOCATED(var2d_in)) ALLOCATE( var2d_in( xfocus, yfocus ), STAT=sts )
 
-              IF ( var_cmip(ivar) == "clivi" ) THEN
-                IF (.not. ALLOCATED(clivi)) ALLOCATE( clivi( xfocus, yfocus ), STAT=sts )
-              END IF
+              PRINT *, "allocate p_in, t_in, ph_fl"
+              IF (.not. ALLOCATED(p_in))  ALLOCATE( p_in( xfocus, yfocus, nz ), STAT=sts )
+              IF (.not. ALLOCATED(t_in))  ALLOCATE( t_in( xfocus, yfocus, nz ), STAT=sts )
+              IF (.not. ALLOCATED(ph_fl)) ALLOCATE( ph_fl( xfocus, yfocus, nz ), STAT=sts )
 
-              IF ( var_cmip(ivar) == "clgvi" ) THEN
-                IF (.not. ALLOCATED(clgvi)) ALLOCATE( clgvi( xfocus, yfocus ), STAT=sts )
-              END IF
-
-              IF ( var_cmip(ivar) == "clhvi" ) THEN
-                IF (.not. ALLOCATED(clhvi)) ALLOCATE( clhvi( xfocus, yfocus ), STAT=sts )
-              END IF
-
+              !-------------------------------------------------------------------
+              
+              ! Read needed variables  
               PRINT *, "read P"
               IF (.not. ALLOCATED(pp_in)) ALLOCATE( pp_in( xfocus, yfocus, nz ), STAT=sts )
               sts = NF90_INQ_VARID(ncidin, "P", pp_varid)
@@ -1828,8 +1812,18 @@ fnNMLvar(1) = "runctrl.vars.nml"
               sts = NF90_INQ_VARID(ncidin, "T", theta_varid)
               sts = NF90_GET_VAR(ncidin, theta_varid, theta_in(:,:,:), &
                 START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, nz, 1 /) )
-            !-------------------------------------------------------------------
+              
+              PRINT *, "read PSFC"
+              IF (.not. ALLOCATED(psfc_in)) ALLOCATE( psfc_in( xfocus, yfocus ), STAT=sts )
+                sts = NF90_INQ_VARID(ncidin, "PSFC", psfc_varid)
+                sts = NF90_GET_VAR(ncidin, psfc_varid, psfc_in(:,:), &
+                  START = (/ xoffset, yoffset, it /), COUNT = (/ xfocus, yfocus, 1 /) )
 
+              PRINT *, "read P_TOP"
+              sts = NF90_INQ_VARID(ncidin, "P_TOP", ptop_varid)
+              sts = NF90_GET_VAR(ncidin, ptop_varid, ptop_in, START = (/ it /), COUNT = (/ 1 /) )
+
+            !-------------------------------------------------------------------
               IF ( ( var_cmip(ivar) == "prw" ) &
                  .OR. ( var_cmip(ivar) == "psl" ) &
                  .OR. ( INDEX(var_cmip(ivar),"hus") == 1 ) &
@@ -1849,6 +1843,11 @@ fnNMLvar(1) = "runctrl.vars.nml"
                 sts = NF90_INQ_VARID(ncidin, "QCLOUD", qc_varid)
                 sts = NF90_GET_VAR(ncidin, qc_varid, qc_in(:,:,:), &
                   START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, nz, 1 /) )
+                PRINT *, "read QRAIN"
+                IF (.not. ALLOCATED(qr_in)) ALLOCATE( qr_in( xfocus, yfocus, nz  ), STAT=sts )
+                sts = NF90_INQ_VARID(ncidin, "QRAIN", qr_varid)
+                sts = NF90_GET_VAR(ncidin, qr_varid, qr_in(:,:,:), &
+                  START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, nz, 1 /) )
               END IF
 
               IF ( ( var_cmip(ivar) == "clwvi" ) .OR. ( var_cmip(ivar) == "clivi" ) ) THEN
@@ -1857,18 +1856,7 @@ fnNMLvar(1) = "runctrl.vars.nml"
                 sts = NF90_INQ_VARID(ncidin, "QICE", qi_varid)
                 sts = NF90_GET_VAR(ncidin, qi_varid, qi_in(:,:,:), &
                   START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, nz, 1 /) )
-              END IF
 
-              IF ( var_cmip(ivar) == "clwvi" ) THEN
-                PRINT *, "read QRAIN"
-                IF (.not. ALLOCATED(qr_in)) ALLOCATE( qr_in( xfocus, yfocus, nz  ), STAT=sts )
-                sts = NF90_INQ_VARID(ncidin, "QRAIN", qr_varid)
-                sts = NF90_GET_VAR(ncidin, qr_varid, qr_in(:,:,:), &
-                  START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, nz, 1 /) )
-              END IF
-  
-              IF ( ( var_cmip(ivar) == "clwvi" ) &
-                 .OR. ( var_cmip(ivar) == "clivi" ) ) THEN
                 PRINT *, "read QSNOW"
                 IF (.not. ALLOCATED(qs_in)) ALLOCATE( qs_in( xfocus, yfocus, nz  ), STAT=sts )
                 sts = NF90_INQ_VARID(ncidin, "QSNOW", qs_varid)
@@ -1914,14 +1902,6 @@ fnNMLvar(1) = "runctrl.vars.nml"
                   START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, nz+1, 1 /) )
               END IF
   
-              IF ( var_cmip(ivar) == "psl" ) THEN
-                PRINT *, "read PSFC"
-                IF (.not. ALLOCATED(psfc_in)) ALLOCATE( psfc_in( xfocus, yfocus ), STAT=sts )
-                sts = NF90_INQ_VARID(ncidin, "PSFC", psfc_varid)
-                sts = NF90_GET_VAR(ncidin, psfc_varid, psfc_in(:,:), &
-                  START = (/ xoffset, yoffset, it /), COUNT = (/ xfocus, yfocus, 1 /) )
-              END IF
-              
             !- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
             ! Reading data from wrfpress files
             ELSE IF ( filetype(ivar) == "p" )  THEN
@@ -3143,53 +3123,63 @@ fnNMLvar(1) = "runctrl.vars.nml"
 !- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ! prw [kg m-2] i Water Vapor Path
 
-            IF ( (var_cmip(ivar) == "prw") ) THEN  
-              prw(:,:) = 0.
-              DO nl = 1, nz
-                prw(:,:) = prw(:,:) + &
-                  (qv_in(:,:,nl) * p_in(:,:,nl)/(R*t_in(:,:,nl)) * &
-                  ((ph_in(:,:,nl+1)+phb_in(:,:,nl+1)) - (ph_in(:,:,nl)+ &
-                  phb_in(:,:,nl)))/gr)
+            IF ( (var_cmip(ivar) == "prw")) THEN
+
+              pres_in(:,:,1) = 0.5*( psfc_in(:,:) + p_in(:,:,1) )
+              pres_in(:,:,nz+1) = ptop_in(1)
+              DO nl = 2, nz
+                pres_in(:,:,nl) = 0.5*( p_in(:,:,nl-1) + p_in(:,:,nl) )
               END DO
-              data_in(:,:) = prw(:,:)
+
+              data_in(:,:) = 0.
+              DO nl = 1,nz
+                var2d_in = (qv_in(:,:,nl))/(1+(qv_in(:,:,nl)))
+                data_in(:,:) = data_in(:,:) + (var2d_in(:,:) * &
+                             ((pres_in(:,:,nl)-pres_in(:,:,nl+1))))/gr
+              END DO
+
               WHERE (data_in < 0.) data_in = 0.
             END IF
 
 !- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ! clwvi [kg m-2] i Condensed Water Path  
 
-            IF ( (var_cmip(ivar) == "clwvi") ) THEN
+            IF ( (var_cmip(ivar) == "clwvi")) THEN
 
-              clwvi(:,:) = 0.
-              DO nl = 1,nz - 1
-                clwvi(:,:) = clwvi(:,:) + (qc_in(:,:,nl) + qi_in(:,:,nl) + &
-                             qr_in(:,:,nl) + qs_in(:,:,nl) ) * p_in(:,:,nl)/ &
-                             (R*t_in(:,:,nl)) * ((ph_in(:,:,nl+1)+ &
-                             phb_in(:,:,nl+1)) - (ph_in(:,:,nl)+ &
-                             phb_in(:,:,nl)))/gr
+              pres_in(:,:,1) = 0.5*( psfc_in(:,:) + p_in(:,:,1) )
+              pres_in(:,:,nz+1) = ptop_in(1)
+              DO nl = 2, nz
+                pres_in(:,:,nl) = 0.5*( p_in(:,:,nl-1) + p_in(:,:,nl) )
               END DO
-              data_in(:,:) = clwvi(:,:)
+
+              data_in(:,:) = 0.
+              DO nl = 1,nz
+                var2d_in = (qc_in(:,:,nl) + qi_in(:,:,nl) + qr_in(:,:,nl) + qs_in(:,:,nl))/ &
+                        (1+(qc_in(:,:,nl) + qi_in(:,:,nl) + qr_in(:,:,nl) + qs_in(:,:,nl)))
+                data_in(:,:) = data_in(:,:) + (var2d_in(:,:) * &
+                             ((pres_in(:,:,nl)-pres_in(:,:,nl+1))))/gr
+              END DO
+
               WHERE (data_in < 0.) data_in = 0.
             END IF
-  
 !- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ! clivi  [kg m-2] i Ice Water Path
 
             IF ( (var_cmip(ivar) == "clivi")) THEN
               
-              press(:,:,1) = psf(:,:)
-              press(:,:,nz+1) = p_top
+              pres_in(:,:,1) = 0.5*( psfc_in(:,:) + p_in(:,:,1) )
+              pres_in(:,:,nz+1) = ptop_in(1)
+              DO nl = 2, nz
+                pres_in(:,:,nl) = 0.5*( p_in(:,:,nl-1) + p_in(:,:,nl) )  
+              END DO
               
-              clivi(:,:) = 0.
+              data_in(:,:) = 0.
               DO nl = 1,nz
-                if(nl < nz)
-                  press(:,:,nl) = 0.5 * ( p_in(:,:,nl) + p_in(:,:,nl+1) )
-                clivi(:,:) = clivi(:,:) + (qi_in(:,:,nl) + qs_in(:,:,nl)) * &
-                             (press(:,:,nl)-press(:,:,nl+1))
+                var2d_in = (qi_in(:,:,nl) + qs_in(:,:,nl))/(1+(qi_in(:,:,nl) + qs_in(:,:,nl)))
+                data_in(:,:) = data_in(:,:) + (var2d_in(:,:) * &
+                             ((pres_in(:,:,nl)-pres_in(:,:,nl+1))))/gr
               END DO
 
-              clivi = clivi/gr
-              data_in(:,:) = clivi(:,:)
               WHERE (data_in < 0.) data_in = 0.
             END IF
 
@@ -3198,17 +3188,19 @@ fnNMLvar(1) = "runctrl.vars.nml"
 
             IF ( (var_cmip(ivar) == "clgvi")) THEN
 
-              !t_in(:,:,:) = (theta_in(:,:,:)+T00)*((pp_in(:,:,:)+pb_in(:,:,:))/P00)**(R/cp)
-              !p_in(:,:,:) = pp_in(:,:,:) + pb_in(:,:,:)
+              pres_in(:,:,1) = 0.5*( psfc_in(:,:) + p_in(:,:,1) )
+              pres_in(:,:,nz+1) = ptop_in(1)
+              DO nl = 2, nz
+                pres_in(:,:,nl) = 0.5*( p_in(:,:,nl-1) + p_in(:,:,nl) )  
+              END DO
+                
+              data_in(:,:) = 0.
+              DO nl = 1,nz
+                var2d_in = (qg_in(:,:,nl))/(1+qg_in(:,:,nl))
+                data_in(:,:) = data_in(:,:) + (var2d_in(:,:) * &
+                             ((pres_in(:,:,nl)-pres_in(:,:,nl+1))))/gr
+              END DO
 
-              clgvi(:,:) = 0.
-              DO nl = 1,nz - 1
-                clgvi(:,:) = clgvi(:,:) + (qg_in(:,:,nl)) * &
-                             p_in(:,:,nl)/(R*t_in(:,:,nl)) * &
-                             ((ph_in(:,:,nl+1)+phb_in(:,:,nl+1)) - &
-                             (ph_in(:,:,nl)+phb_in(:,:,nl)))/gr
-              END DO              
-              data_in(:,:) = clgvi(:,:)
               WHERE (data_in < 0.) data_in = 0.
             END IF
 
@@ -3217,17 +3209,20 @@ fnNMLvar(1) = "runctrl.vars.nml"
 
             IF ( (var_cmip(ivar) == "clhvi")) THEN
 
-              !t_in(:,:,:) = (theta_in(:,:,:)+T00)*((pp_in(:,:,:)+pb_in(:,:,:))/P00)**(R/cp)
-              !p_in(:,:,:) = pp_in(:,:,:) + pb_in(:,:,:)
 
-              clhvi(:,:) = 0.
-              DO nl = 1,nz - 1
-                clhvi(:,:) = clhvi(:,:) + (qh_in(:,:,nl)) * &
-                             p_in(:,:,nl)/(R*t_in(:,:,nl)) * &
-                             ((ph_in(:,:,nl+1)+phb_in(:,:,nl+1)) - &
-                             (ph_in(:,:,nl)+phb_in(:,:,nl)))/gr
+              pres_in(:,:,1) = 0.5*( psfc_in(:,:) + p_in(:,:,1) )
+              pres_in(:,:,nz+1) = ptop_in(1)
+              DO nl = 2, nz
+                pres_in(:,:,nl) = 0.5*( p_in(:,:,nl-1) + p_in(:,:,nl) )
               END DO
-              data_in(:,:) = clhvi(:,:)
+            
+              data_in(:,:) = 0.
+              DO nl = 1,nz
+                var2d_in = (qh_in(:,:,nl))/(1+qh_in(:,:,nl))
+                data_in(:,:) = data_in(:,:) + (var2d_in(:,:) * &
+                             ((pres_in(:,:,nl)-pres_in(:,:,nl+1))))/gr
+              END DO
+
               WHERE (data_in < 0.) data_in = 0.
             END IF
 
