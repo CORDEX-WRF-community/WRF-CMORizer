@@ -261,7 +261,8 @@ REAL :: &
   ! vertical interpolation
   slope         , &
   low_lev       , &
-  high_lev       
+  high_lev      , &
+  dgph 
 
 REAL, DIMENSION(1) ::  ptop_in
 
@@ -1731,7 +1732,6 @@ fnNMLvar(1) = "runctrl.vars.nml"
 
              IF ( (var_cmip(ivar) == "psl") &
                 .OR.  (var_cmip(ivar) == "prw") &
-                .OR.  (var_cmip(ivar) == "cin") &
                 .OR.  (var_cmip(ivar) == "clivi") &
                 .OR.  (var_cmip(ivar) == "clgvi") &
                 .OR.  (var_cmip(ivar) == "clhvi") &
@@ -3278,11 +3278,16 @@ fnNMLvar(1) = "runctrl.vars.nml"
                   END DO
                  
                   DO nl = 1,nz-1
+                    IF (nl .eq. 1) then
+                        dgph = phb_in(i,j,nl)+ph_in(i,j,nl)
+                    ELSE
+                        dgph = (phb_in(i,j,nl)+ph_in(i,j,nl))-(phb_in(i,j,nl-1)+ph_in(i,j,nl-1))
+                    END IF
                     IF (lfc(i,j) .gt. 0.) THEN
                       IF ( (t_p(i,j,nl) .gt. t_in(i,j,nl)) .AND. (p_in(i,j,nl) .lt. lfc(i,j)) ) THEN   
-                        cape(i,j) = cape(i,j) + (t_p(i,j,nl) - t_in(i,j,nl)) / t_in(i,j,nl) * ((phb_in(i,j,nl)+ph_in(i,j,nl))-(phb_in(i,j,nl-1)+ph_in(i,j,nl-1)))      
+                        cape(i,j) = cape(i,j) + (t_p(i,j,nl) - t_in(i,j,nl)) / t_in(i,j,nl) * (dgph)   
                       ELSE IF ( (t_p(i,j,nl) .lt. t_in(i,j,nl)) .AND. (p_in(i,j,nl) .ge. lfc(i,j)) ) THEN ! convective inhibition 
-                        cin(i,j) = cin(i,j) + (t_in(i,j,nl) - t_p(i,j,nl)) / t_in(i,j,nl) * ((phb_in(i,j,nl)+ph_in(i,j,nl))-(phb_in(i,j,nl-1)+ph_in(i,j,nl-1)))
+                        cin(i,j) = cin(i,j) + (t_in(i,j,nl) - t_p(i,j,nl)) / t_in(i,j,nl) * (dgph)
                       END IF
                     END IF
                     
