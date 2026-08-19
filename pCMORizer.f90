@@ -3291,8 +3291,10 @@ fnNMLvar(1) = "runctrl.vars.nml"
                       END IF
                     END IF
                     
-                    IF ( (p_in(i,j,nl) .lt. 50000.) ) THEN
-                      li(i,j) = t_in(i,j,nl) - t_p(i,j,nl)
+                    IF ( (p_in(i,j,nl) .ge. 50000.0) .and. (p_in(i,j,nl+1) .lt. 50000.0) ) THEN
+                      slope = (50000.0 - p_in(i,j,nl)) / (p_in(i,j,nl+1) - p_in(i,j,nl))
+                      li(i,j) = (t_in(i,j,nl) + slope  * (t_in(i,j,nl+1) - t_in(i,j,nl))) - &
+                                (t_p(i,j,nl)  + slope  * (t_p(i,j,nl+1)  - t_p(i,j,nl)))
                       exit
                     END IF
                   END DO
