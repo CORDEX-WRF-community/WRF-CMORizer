@@ -1492,7 +1492,13 @@ fnNMLvar(1) = "runctrl.vars.nml"
               !-----------------------------------------------------------------              
               ! global attributes always included
               sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "WRF_CMORizer_version", cmorizer_version)
-              sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "title", institution_id // " " // source_id // " downscaling of " // driving_source_id // " " // driving_experiment_id // " for " // project_id // " " // domain_id)
+              sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "title", &
+                      TRIM(institution_id) // " " // &
+                      TRIM(source_id) // " downscaling of " // &
+                      TRIM(driving_source_id) // " " // &
+                      TRIM(driving_experiment_id) // " for " // &
+                      TRIM(project_id) // " " // &
+                      TRIM(domain_id))
               sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "activity_id", activity_id)
               sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "contact", contact)
               sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "Conventions", Conventions)

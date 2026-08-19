@@ -6,13 +6,13 @@ The provided postprocessing scripts and codes enable the efficient postprocessin
 
 1. After cloning the repository, navigate to the pCMORizer folder and:
     - Set the correct compiler (gfortran or intel) and path to your NetCDF-c and NetCDF-Fortran folders in the [Makefile](https://github.com/CORDEX-WRF-community/WRF-CMORizer/blob/main/Makefile?ref_type=heads)
-    - Adjust the characteristics of your domain and global attributes to fit your domains or create your own template following the examples for [d01](https://github.com/CORDEX-WRF-community/WRF-CMORizer/blob/main/runctrl.current.nml_template_d01?ref_type=heads) or/and [d02](https://github.com/CORDEX-WRF-community/WRF-CMORizer/blob/main/runctrl.current.nml_template_d02?ref_type=heads) templates
+   - Adjust the characteristics of your domain and global attributes to fit your domain or create your own template following the [d01](https://github.com/CORDEX-WRF-community/WRF-CMORizer/blob/main/runctrl.current.nml_template_d01?ref_type=heads) example
     - Set the correct paths to the WRF raw output files in [run_pCMORizer_in_quasi_parallel.sh](https://github.com/CORDEX-WRF-community/WRF-CMORizer/blob/main/run_pCMORizer_in_quasi_parallel.sh?ref_type=heads)
     
 2. Run the code:
  - To test the code manually for a single variable:
    ```
-   ./ run_CMORizer_in_quasi_parallel.sh <YEAR> <DOMAIN> <VARNAME> <PROJECT> <FREQUENCY>
+  ./run_pCMORizer_in_quasi_parallel.sh <YEAR> <DOMAIN> <VARNAME> <PROJECT> <FREQUENCY>
    ```
 
    Accepted formats:
@@ -24,7 +24,7 @@ The provided postprocessing scripts and codes enable the efficient postprocessin
 
  - To process all requested variables in the selected project, use this command:
    ```
-   ./loop_variables.sh <VARLIST> <YEAR> <DOMAIN> <PROJECT> <FREQUENCY-OPTIONAL>
+   ./loop_pCMORizer_over_all_variables.sh <VARLIST> <YEAR> <DOMAIN> <PROJECT> <FREQUENCY-OPTIONAL>
    ```
    Accepted formats:
     - VARLIST: a download link for a csv file can be given or csv file itself that has to be located in the running directory
@@ -50,25 +50,20 @@ The provided postprocessing scripts and codes enable the efficient postprocessin
   conda env create -f environment.yaml
   ```
   
-2. [Makefile](https://github.com/CORDEX-WRF-community/WRF-CMORizer/blob/main/Makefile?ref_type=heads) need to be set up to corresponding compilare, and is used to compile the main pCMORize.f90.
+2. [Makefile](https://github.com/CORDEX-WRF-community/WRF-CMORizer/blob/main/Makefile?ref_type=heads) need to be set up to the corresponding compiler, and is used to compile the main pCMORizer.f90.
 
 3. [pCMORizer.f90](https://github.com/CORDEX-WRF-community/WRF-CMORizer/blob/main/pCMORizer.f90?ref_type=heads) is the main Fortran code that reads raw wrfout files, extracts requested variables, and writes and aggregates them in a CF conforming NetCDF file. For the compilation of the code use the [Makefile](https://github.com/impetus4change/wrf/blob/main/CMORizer/Makefile).
 
 4. [CORDEX_CMIP6_variables.csv](https://github.com/CORDEX-WRF-community/WRF-CMORizer/blob/main/CORDEX_CMIP6_variables.csv?ref_type=heads) lists all necessary variables and metadata required for CORDEX CMIP6 domains, including the corresponding variable names in the WRF model. The metadata is based on the official CORDEX CMIP6 [variable list](https://cordex.org/experiment-guidelines/cordex-cmip6/data-request-cordex-cmip6-rcms/).
 
-5. data-request_*.csv files contain lists of requested variables for different projects. Each project has a separate CSV file:
-    - EUROCORDEX ([data-request_eurocordex.csv](https://github.com/CORDEX-WRF-community/WRF-CMORizer/blob/main/data-request_eurocordex.csv?ref_type=heads)),
-    - FPS-URBAN-RCC ([data-request_fpsurban.csv](https://github.com/CORDEX-WRF-community/WRF-CMORizer/blob/main/data-request_fpsurban.csv?ref_type=heads)),
-    - FPS-CONV ([data-request_fpsconv.csv](https://github.com/CORDEX-WRF-community/WRF-CMORizer/blob/main/data-request_fpsconv.csv?ref_type=heads)),
-    - I4C ([data-request_i4c.csv](https://github.com/CORDEX-WRF-community/WRF-CMORizer/blob/main/data-request_i4c.csv?ref_type=heads)),
-    - Merged ([data-request_merged.csv](https://github.com/CORDEX-WRF-community/WRF-CMORizer/blob/main/data-request_merged.csv?ref_type=heads))
+5. [data_request.csv](https://github.com/CORDEX-WRF-community/WRF-CMORizer/blob/main/data_request.csv?ref_type=heads) contains the list of requested variables for processing.
 
 6. [generate_vars_namelist.py](https://github.com/CORDEX-WRF-community/WRF-CMORizer/blob/main/generate_vars_namelist.py?ref_type=heads) creates a namelist for a desired variable, containing the information necessary for the main code to be executed. To run it, the following command should be used:
    ```
    python generate_vars_namelist.py <variable name(s)>
    ```
 
-7. Templates for the core namelist, runctrl.current.nml, for two domains: [d01](https://github.com/CORDEX-WRF-community/WRF-CMORizer/blob/main/runctrl.current.nml_template_d01?ref_type=heads) or/and [d02](https://github.com/CORDEX-WRF-community/WRF-CMORizer/blob/main/runctrl.current.nml_template_d02?ref_type=heads). These templates provide information on global attributes of the CMORized file, characteristics of the domain, and the aggregation method to be applied (e.g., from date to date, monthly, yearly).
+7. Template for the core namelist, runctrl.current.nml, for domain [d01](https://github.com/CORDEX-WRF-community/WRF-CMORizer/blob/main/runctrl.current.nml_template_d01?ref_type=heads). This template provides information on global attributes of the CMORized file, characteristics of the domain, and the aggregation method to be applied (e.g., from date to date, monthly, yearly).
 
 8. [run_pCMORizer_in_quasi_parallel.sh](https://github.com/CORDEX-WRF-community/WRF-CMORizer/blob/main/run_pCMORizer_in_quasi_parallel.sh?ref_type=heads) sends a job to a HPC per variable, per year, per domain, per project, and per frequency.
 
