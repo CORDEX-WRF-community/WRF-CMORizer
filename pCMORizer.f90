@@ -162,8 +162,16 @@ INTERFACE
     REAL, INTENT(in)                    :: var2d, newz
     REAL, INTENT(out)                   :: varout
   END SUBROUTINE linear_int 
+
+! Ensure longitude is continuous across the dateline
+  SUBROUTINE unwrap_longitude(lon)
+    IMPLICIT NONE
+    REAL, INTENT(INOUT) :: lon(:,:)
+    INTEGER :: i, j
+    REAL :: delta
+  END SUBROUTINE unwrap_longitude
   
-  
+
 END INTERFACE
 
 !===============================================================================
@@ -515,6 +523,8 @@ sts = NF90_OPEN(TRIM(PnFnGeo), NF90_NOWRITE, ncidin)
 sts = NF90_INQ_VARID(ncidin, "XLONG_M", varid)
 sts = NF90_GET_VAR(ncidin, varid, GeoInLonLat(:, :, 1), &
   START = (/ xoffset, yoffset, 1 /), COUNT = (/ xfocus, yfocus, 1 /))
+! Unwrap longitude coordinates across the +/-180 degree meridian
+CALL unwrap_longitude(GeoInLonLat(:, :, 1))
 
 sts = NF90_INQ_VARID(ncidin, "XLAT_M", varid)
 sts = NF90_GET_VAR(ncidin, varid, GeoInLonLat(:, :, 2), &
@@ -4607,3 +4617,32 @@ CONTAINS
 !-------------------------------------------------------------------------------
 
 END SUBROUTINE CreateRefTimeArray
+
+
+SUBROUTINE unwrap_longitude(lon)
+! Ensure longitude is continuous across the dateline
+
+IMPLICIT NONE
+REAL, INTENT(INOUT) :: lon(:,:)
+INTEGER :: i, j
+REAL :: delta
+
+do j = 1, SIZE(lon,2)
+  do i = 2, SIZE(lon,1)
+    delta = lon(i,j) - lon(i-1,j)
+    if (delta < -180.0) then
+      lon(i,j) = lon(i,j) + 360.0
+    else if (delta > 180.0) then
+      lon(i,j) = lon(i,j) - 360.0
+    end if
+  end do
+end do
+
+! Convert to CORDEX-style representation if needed
+if (maxval(lon) > 180.0 .and. minval(lon) < 0.0) then
+  where (lon < 0.0)
+    lon = lon + 360.0
+  end where
+end if
+
+END SUBROUTINE unwrap_longitude
