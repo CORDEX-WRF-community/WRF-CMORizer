@@ -41,11 +41,11 @@ MODULE NamelistHandling
   INTEGER, PARAMETER :: nvars = 39 ! 39 maximum number of vars per namelist, keep const at max number
 
   CHARACTER (len = 300) :: activity_id, contact, Conventions, domain_id, att_domain, &
-  	driving_experiment_id,driving_experiment, &
-  	driving_institution_id, driving_source_id, driving_variant_label, grid, institution, &
-  	institution_id, license, mip_era, product, project_id, source, &
-  	source_id, source_type, version, version_realization, references, tracking_id, &
-	  title, variable_id
+        driving_experiment_id,driving_experiment, &
+        driving_institution_id, driving_source_id, driving_variant_label, grid, institution, &
+        institution_id, license, mip_era, product, project_id, source, &
+        source_id, source_type, version, version_realization, references, tracking_id, &
+        title, variable_id
 
   CHARACTER (len = 1000) :: comment
 
@@ -63,10 +63,11 @@ MODULE NamelistHandling
   CHARACTER (len = 19) :: tsact, teact
   INTEGER :: nvar
                      
-
 ! reading from runctrl.vars.nml*
   CHARACTER (LEN = 100), DIMENSION(nvars) :: var_wrf, var_cmip, standard_name, &
-    long_name, units, filetype, cmfx, cm1hr, cm3hr, cm6hr, cmDay, cmMon, cmSea, positive
+    long_name, units, positive, cmfx, cm1hr, cm3hr, cm6hr, cmDay, cmMon, cmSea, &
+    cmsfx, cms1hr, cms3hr, cms6hr, cmsDay, cmsMon, cmsSea, filetype
+  CHARACTER (len = 1000), DIMENSION(nvars) :: var_comm
   INTEGER, DIMENSION(nvars):: height, plevel, cordexID
   LOGICAL, DIMENSION(nvars):: time1hr, time3hr, time6hr, timeDay, timeMon, timeSea, &
      interpolate, timefx
@@ -89,8 +90,11 @@ MODULE NamelistHandling
     aggregation_individually, tsact, teact
     
   NAMELIST / vars / var_wrf, var_cmip, standard_name, long_name, units, &
-    plevel, height, time1hr, time3hr, time6hr, timeDay, timeMon, timeSea, timefx, &
-    filetype, cmfx, cm1hr, cm3hr, cm6hr, cmDay, cmMon, cmSea, interpolate, cordexID, positive
+    plevel, height, positive, &
+    time1hr, time3hr, time6hr, timeDay, timeMon, timeSea, timefx, &
+    cmfx, cm1hr, cm3hr, cm6hr, cmDay, cmMon, cmSea, &
+    cmsfx, cms1hr, cms3hr, cms6hr, cmsDay, cmsMon, cmsSea, &
+    filetype, var_comm
 
 END MODULE NamelistHandling
 
@@ -387,7 +391,7 @@ CHARACTER (LEN=2) :: InDateTimeMonthStr, FirstHourStr, FirstMinuteStr, LastDaySt
   LastHourStr, LastMinuteStr, tsactMonthStr, tsactDayStr, tsactHourStr, tsactMinuteStr, &
   teactMonthStr, teactDayStr, teactHourStr, teactMinuteStr
 CHARACTER (LEN=12) :: FileNameStartDateTime, FileNameEndDateTime
-CHARACTER (LEN=100), DIMENSION(nvars) :: cell_methods
+CHARACTER (LEN=100), DIMENSION(nvars) :: cell_methods, agg_method, cell_measures
 INTEGER :: InDateTimeYearPrev = 0, InDateTimeMonthPrev = 0
 INTEGER :: tsactYear, tsactMonth, tsactDay, tsactHour, tsactMinute, tsactSecond, & 
   teactYear, teactMonth, teactDay, teactHour, teactMinute, teactSecond
@@ -679,30 +683,26 @@ fnNMLvar(1) = "runctrl.vars.nml"
     SELECT CASE (frequency(ifrq))
     CASE ('1hr')
       cell_methods(:) = cm1hr(:)
+      cell_measures(:) = cms1hr(:)
+      agg_method(:) = get_cell_method(cm1hr(:))
       procflag(:) = time1hr(:)
       dtHours = 1.
     CASE ('3hr')
       cell_methods(:) = cm3hr(:)
+      cell_measures(:) = cms3hr(:)
+      agg_method(:) = get_cell_method(cm3hr(:))
       procflag(:) = time3hr(:)
       dtHours = 3.
     CASE ('6hr')
       cell_methods(:) = cm6hr(:)
+      cell_measures(:) = cms6hr(:)
+      agg_method(:) = get_cell_method(cm6hr(:))
       procflag(:) = time6hr(:)
       dtHours = 6.
-    CASE ('day')
-      cell_methods(:) = cmDay(:)
-      procflag(:) = timeDay(:)
-      dtHours = 24.
-    CASE ('mon')
-      STOP "monthly aggregation not yet implemented"
-      cell_methods(:) = cmMon(:)
-      procflag(:) = timeMon(:)
-    CASE ('sem')
-      STOP "seasonal aggregation not yet implemented"
-      cell_methods(:) = cmSea(:)
-      procflag(:) = timeSea(:)
     CASE ('fx')
       cell_methods(:) = cmfx(:)
+      cell_measures(:) = cmsfx(:)
+      agg_method(:) = 'get_cell_method(cmfx(:))'
       procflag(:) = timefx(:)
       dtHours = 1.
     CASE DEFAULT
@@ -810,8 +810,8 @@ fnNMLvar(1) = "runctrl.vars.nml"
         ! see "variable to read/write with no additional processing" part
         PRINT *, "number of timesteps in the input data: ", InDimLenRec
         ! KGo: not in my data
-        IF ( ( cell_methods(ivar) == "minimum" ) .OR. &
-             ( cell_methods(ivar) == "maximum" ) ) THEN
+        IF ( ( agg_method(ivar) == "minimum" ) .OR. &
+             ( agg_method(ivar) == "maximum" ) ) THEN
           InDimLenRec = InDimLenRec - 1
           PRINT *, "fixing number of input timesteps for min/max: ", InDimLenRec
         END IF
@@ -870,8 +870,8 @@ fnNMLvar(1) = "runctrl.vars.nml"
        !      if inputtimesteptruncate=T, then there is a gap in the data, i.e., one timestep
        !      at the end / beginning of new day remains missing
           IF (inputtimesteptruncate) THEN 
-            IF ( ( it .EQ. InDimLenRec ) .AND. ( ( cell_methods(ivar) == "mean" ) .OR. &
-                 ( cell_methods(ivar) == "sum" ) ) ) THEN
+            IF ( ( it .EQ. InDimLenRec ) .AND. ( ( agg_method(ivar) == "mean" ) .OR. &
+                 ( agg_method(ivar) == "sum" ) ) ) THEN
               PRINT *, "skip last input timestep to avoid NaNs in the following aggregation file ", InDimLenRec
               EXIT
             END IF
@@ -981,10 +981,10 @@ fnNMLvar(1) = "runctrl.vars.nml"
               END DO
               PRINT *, "size ipos", SIZE(ipos)
               PRINT *, "counter = ", counter
-              !IF ( ( cell_methods(ivar) == "mean" ) .OR. &
-              !     ( cell_methods(ivar) == "sum" ) .OR. &
-              !     ( cell_methods(ivar) == "minimum" ) .OR. &
-              !     ( cell_methods(ivar) == "maximum" ) ) THEN
+              !IF ( ( agg_method(ivar) == "mean" ) .OR. &
+              !     ( agg_method(ivar) == "sum" ) .OR. &
+              !     ( agg_method(ivar) == "minimum" ) .OR. &
+              !     ( agg_method(ivar) == "maximum" ) ) THEN
               !  counter = counter - 1
               !  ipos = ipos(1:counter)
               !  PRINT *, "size ipos", SIZE(ipos)
@@ -1065,7 +1065,7 @@ fnNMLvar(1) = "runctrl.vars.nml"
                   (frequency(ifrq) == '3hr') .OR. &
                   (frequency(ifrq) == '6hr')) THEN
                   
-              IF ( (cell_methods(ivar) == "mean") .OR. (cell_methods(ivar) == "sum") ) THEN 
+              IF ( (agg_method(ivar) == "mean") .OR. (agg_method(ivar) == "sum") ) THEN 
                 !WRITE (tsactHourStr,'(I2.2)') INT( FLOOR( ((dtHours/2.)*60.) / 60. ) )
                 WRITE (tsactMinuteStr,'(I2.2)') INT( MOD( (dtHours/2.)*60., 60. ) )
                 !WRITE (teactHourStr,'(I2.2)') INT( FLOOR( ( (24.*60.) - (dtHours/2.)*60.)  / 60. ) )
@@ -1107,7 +1107,7 @@ fnNMLvar(1) = "runctrl.vars.nml"
               WRITE (InDateTimeMonthStr,'(I2.2)') InDateTimeMonth(it)              
               WRITE (LastDayStr,'(I2.2)') INT(TimeRefArraySubset(0,5))
 
-              IF ( (cell_methods(ivar) == "mean") .OR. (cell_methods(ivar) == "sum") ) THEN 
+              IF ( (agg_method(ivar) == "mean") .OR. (agg_method(ivar) == "sum") ) THEN 
                 WRITE (FirstHourStr,'(I2.2)') INT( FLOOR( ((dtHours/2.)*60.) / 60. ) )
                 WRITE (FirstMinuteStr,'(I2.2)') INT( MOD( (dtHours/2.)*60., 60. ) )
                 WRITE (LastHourStr,'(I2.2)') INT( FLOOR( ( (24.*60.) - (dtHours/2.)*60.)  / 60. ) )
@@ -1137,7 +1137,7 @@ fnNMLvar(1) = "runctrl.vars.nml"
                     (frequency(ifrq) == '3hr') .OR. &
                     (frequency(ifrq) == '6hr')) THEN
 
-                  IF ( (cell_methods(ivar) == "mean") .OR. (cell_methods(ivar) == "sum") ) THEN
+                  IF ( (agg_method(ivar) == "mean") .OR. (agg_method(ivar) == "sum") ) THEN
                     FileNameStartDateTime = InDateTimeYearStr//InDateTimeMonthStr//"01"//FirstHourStr//FirstMinuteStr
                     FileNameEndDateTime = InDateTimeYearStr//InDateTimeMonthStr//LastDayStr//LastHourStr//LastMinuteStr
                   ELSE
@@ -1161,7 +1161,7 @@ fnNMLvar(1) = "runctrl.vars.nml"
                 IF ((frequency(ifrq) == '1hr') .OR. &
                     (frequency(ifrq) == '3hr') .OR. &
                     (frequency(ifrq) == '6hr')) THEN
-                  IF ( (cell_methods(ivar) == "mean") .OR. (cell_methods(ivar) == "sum") ) THEN
+                  IF ( (agg_method(ivar) == "mean") .OR. (agg_method(ivar) == "sum") ) THEN
                     FileNameStartDateTime = InDateTimeYearStr//"0101"//FirstHourStr//FirstMinuteStr
                     FileNameEndDateTime = InDateTimeYearStr//"1231"//LastHourStr//LastMinuteStr
                   ELSE
@@ -1286,10 +1286,10 @@ fnNMLvar(1) = "runctrl.vars.nml"
               ! define time dimension
               IF (frequency(ifrq) /= 'fx') THEN
                 sts = NF90_DEF_DIM(ncid, "time", NF90_UNLIMITED, rec_dimid)
-                IF ( ( cell_methods(ivar) == "mean" ) .OR. &
-                     ( cell_methods(ivar) == "sum" ) .OR. &
-                     ( cell_methods(ivar) == "minimum" ) .OR. &
-                     ( cell_methods(ivar) == "maximum" ) ) THEN
+                IF ( ( agg_method(ivar) == "mean" ) .OR. &
+                     ( agg_method(ivar) == "sum" ) .OR. &
+                     ( agg_method(ivar) == "minimum" ) .OR. &
+                     ( agg_method(ivar) == "maximum" ) ) THEN
                   sts = NF90_DEF_DIM(ncid, "bnds", 2, nb2_dimid)
                 ENDIF
               END IF
@@ -1436,7 +1436,7 @@ fnNMLvar(1) = "runctrl.vars.nml"
                 sts = nf90_put_att(ncid, plev_varid, "units", "Pa")
                 sts = nf90_put_att(ncid, plev_varid, "positive", "down")
                 sts = nf90_put_att(ncid, plev_varid, "axis", "Z")
-                IF ( cell_methods(ivar) == "vmean" ) THEN ! if this is layers over which there has been some everaging
+                IF ( agg_method(ivar) == "vmean" ) THEN ! if this is layers over which there has been some everaging
                   sts = nf90_put_att(ncid, plev_varid, "bounds", "plev_bnds")
                 END IF
               END IF
@@ -1458,7 +1458,7 @@ fnNMLvar(1) = "runctrl.vars.nml"
               ENDIF
  
               ! included variabels averaged between levels  
-              IF ( cell_methods(ivar) == "vmean" ) THEN
+              IF ( agg_method(ivar) == "vmean" ) THEN
                 sts = nf90_def_var(ncid, "plev_bnds", NF90_DOUBLE, (/ nb2_dimid /), plevbnds_varid, fletcher32 = .true.)
                 sts = nf90_def_var_deflate(ncid, plevbnds_varid, 1, 1, 1)
               END IF
@@ -1472,17 +1472,17 @@ fnNMLvar(1) = "runctrl.vars.nml"
                 sts = nf90_put_att(ncid, rec_varid, "units", "days since " // tstot(1:10) // "T" // tstot(12:19) // "Z" )
                 sts = nf90_put_att(ncid, rec_varid, "calendar", calendar)
                 sts = nf90_put_att(ncid, rec_varid, "axis", "T")
-                IF ( ( cell_methods(ivar) == "mean" ) .OR. &
-                     ( cell_methods(ivar) == "sum" ) .OR. &
-                     ( cell_methods(ivar) == "minimum" ) .OR. &
-                     ( cell_methods(ivar) == "maximum" ) ) THEN
+                IF ( ( agg_method(ivar) == "mean" ) .OR. &
+                     ( agg_method(ivar) == "sum" ) .OR. &
+                     ( agg_method(ivar) == "minimum" ) .OR. &
+                     ( agg_method(ivar) == "maximum" ) ) THEN
                   sts = nf90_put_att(ncid, rec_varid, "bounds", "time_bnds")
                 END IF
   
-                IF ( ( cell_methods(ivar) == "mean" ) .OR. &
-                     ( cell_methods(ivar) == "sum" ) .OR. &
-                     ( cell_methods(ivar) == "minimum" ) .OR. &
-                     ( cell_methods(ivar) == "maximum" ) ) THEN
+                IF ( ( agg_method(ivar) == "mean" ) .OR. &
+                     ( agg_method(ivar) == "sum" ) .OR. &
+                     ( agg_method(ivar) == "minimum" ) .OR. &
+                     ( agg_method(ivar) == "maximum" ) ) THEN
                   sts = nf90_def_var(ncid, "time_bnds", NF90_DOUBLE, (/ nb2_dimid, rec_dimid /), recbnds_varid, fletcher32 = .true.)
                   sts = nf90_def_var_deflate(ncid, recbnds_varid, 1, 1, 1)
                 END IF
@@ -1561,19 +1561,21 @@ fnNMLvar(1) = "runctrl.vars.nml"
                 sts = nf90_put_att(ncid, x_varid, "positive", positive(ivar))
               END IF
               
-              IF ( ( var_cmip(ivar) == "mrro" ) .OR. ( var_cmip(ivar) == "mrros" ) ) THEN
-                sts = nf90_put_att(ncid, x_varid, "cell_methods", "time: "//TRIM(cell_methods(ivar))//" area: "//TRIM(cell_methods(ivar))//" where land")
-              ELSE
-                sts = nf90_put_att(ncid, x_varid, "cell_methods", "time: "//TRIM(cell_methods(ivar)))
+
+              sts = nf90_put_att(ncid, x_varid, "cell_methods", TRIM(cell_methods(ivar)))
+              sts = nf90_put_att(ncid, x_varid, "cell_measures", TRIM(cell_measures(ivar)))
+
+              IF (LEN_TRIM(var_comm(ivar)) > 0 .AND. TRIM(var_comm(ivar)) /= "''") THEN
+                sts = nf90_put_att(ncid, x_varid, "comment", TRIM(var_comm(ivar))) 
               END IF
-              
+                         
               IF ( height(ivar) /= -999 ) THEN
                 sts = nf90_put_att(ncid, x_varid, "coordinates", "height lat lon")
               ELSE IF ( plevel(ivar) /= -999 ) THEN 
                 sts = nf90_put_att(ncid, x_varid, "coordinates", "plev lat lon") 
               ELSE IF ( (TRIM(var_cmip(ivar)) == 'mrsol')   .OR. &
                         (TRIM(var_cmip(ivar)) == 'mrsfl')   .OR. &
-                	(TRIM(var_cmip(ivar)) == 'tsl'  ) ) THEN
+                	      (TRIM(var_cmip(ivar)) == 'tsl'  ) ) THEN
                 sts = nf90_put_att(ncid, x_varid, "coordinates", "sdepth lat lon") 
               ELSE
                 sts = nf90_put_att(ncid, x_varid, "coordinates", "lat lon")
@@ -4021,6 +4023,52 @@ fnNMLvar(1) = "runctrl.vars.nml"
 END DO ! ifrq - different temporal aggregations
 
 !===============================================================================
+CONTAINS
+
+FUNCTION get_cell_method(cell_methods) RESULT(method)
+
+  IMPLICIT NONE
+  CHARACTER(LEN=*), INTENT(IN) :: cell_methods(:)
+  CHARACTER(LEN=20)            :: method(SIZE(cell_methods))
+
+  CHARACTER(LEN=256) :: time_part
+  CHARACTER(LEN=20)  :: word
+  INTEGER            :: pos, ios, i
+
+  DO i = 1, SIZE(cell_methods)
+    ! Default for fx variables (no time: present)
+    method(i) = 'point'
+    pos = INDEX(cell_methods(i), 'time:')
+    IF (pos == 0) CYCLE
+
+    ! Take everything after the first occurrence of "time:"
+    time_part = ADJUSTL(cell_methods(i)(pos+5:))
+
+    ! Read first word after "time:"
+    READ(time_part, *, IOSTAT=ios) word
+    IF (ios /= 0) THEN
+      PRINT *, 'ERROR reading cell_methods: ', TRIM(cell_methods(i))
+      STOP
+    END IF
+    SELECT CASE (TRIM(word))
+    CASE ('point')
+      method(i) = 'point'
+    CASE ('mean')
+      method(i) = 'mean'
+    CASE ('maximum')
+      method(i) = 'maximum'
+    CASE ('minimum')
+      method(i) = 'minimum'
+    CASE ('sum')
+      method(i) = 'sum'
+    CASE DEFAULT
+      PRINT *, 'ERROR: unknown time method: ', TRIM(word)
+      PRINT *, 'cell_methods = ', TRIM(cell_methods(i))
+      STOP
+    END SELECT
+  END DO
+END FUNCTION get_cell_method
+
 
 END PROGRAM WRFCMORizer
 
