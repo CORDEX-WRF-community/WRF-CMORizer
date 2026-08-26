@@ -77,17 +77,6 @@ def get_variables(args, request):
     return [v for v in dict.fromkeys(args) if v in request]
 
 def create_metadata(var, request, wrf):
-    rows = request.get(var, [])
-    wrf_rows = wrf.get(var, [])
-
-    if not rows or not wrf_rows:
-        return []
-
-    height, plevel = levels(var)
-    result = []
-
-
-def create_metadata(var, request, wrf):
     rows, wrf_rows = request.get(var, []), wrf.get(var, [])
     if not rows or not wrf_rows:
         return None
@@ -95,18 +84,18 @@ def create_metadata(var, request, wrf):
     height, plevel = levels(var)
 
     result = {
-        "var_wrf": f"'{wrf_rows[0]['WRF variable']}'",
-        "var_cmip": f"'{var}'",
-        "standard_name": f"'{rows[0]['standard_name']}'",
-        "long_name": f"'{rows[0]['long_name']}'",
-        "units": f"'{rows[0]['units']}'",
-        "cell_methods": f"'{rows[0]['cell_methods']}'",
-        "cell_measures": f"'{rows[0]['cell_measures']}'",
+        "var_wrf": f'"{wrf_rows[0]['WRF variable']}"',
+        "var_cmip": f'"{var}"',
+        "standard_name": f'"{rows[0]['standard_name']}"',
+        "long_name": f'"{rows[0]['long_name']}"',
+        "units": f'"{rows[0]['units']}"',
+        "cell_methods": f'"{rows[0]['cell_methods']}"',
+        "cell_measures": f'"{rows[0]['cell_measures']}"',
         "height": height,
         "plevel": plevel,
-        "positive": f"'{rows[0]['positive']}'",
-        "filetype": f"'{FILETYPE}'",
-        "var_comm": f"'{rows[0]['comment']}'",
+        "positive": f'"{rows[0]['positive']}"',
+        "filetype": f'"{FILETYPE}"',
+        "var_comm": f'"{rows[0]["comment"]}"',
     }
 
     # Store frequency-specific metadata
@@ -126,8 +115,8 @@ def create_metadata(var, request, wrf):
             }[freq]
 
             result[f"time{freq_name}"] = "T"
-            result[f"cm{freq_name}"] = f"'{row['cell_methods']}'"
-            result[f"cms{freq_name}"] = f"'{row['cell_measures']}'"
+            result[f"cm{freq_name}"] = f'"{row['cell_methods']}"'
+            result[f"cms{freq_name}"] = f'"{row['cell_measures']}"'
 
     return result
 
