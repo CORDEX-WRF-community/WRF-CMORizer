@@ -218,8 +218,8 @@ REAL(KIND=8), PARAMETER :: fw1=3.536240e-4,fw2=2.932836e-5,fw3=2.616898e-7,fw4=8
 
 ! new netCDF file
 INTEGER :: ncid, ncidin, ncidin0
-INTEGER :: lon_dimid, lat_dimid, rec_dimid, height_dimid, &
-  nb2_dimid, x_dimid, y_dimid, plev_dimid, depth_dimid
+INTEGER :: lon_dimid, lat_dimid, rec_dimid, &
+  nb2_dimid, x_dimid, y_dimid, depth_dimid
 
 INTEGER :: varid, x_varid, lon_varid, lat_varid, rlon_varid, rlat_varid, hgt_varid, &
   rotated_pole_varid, lambert_varid, height_varid, rec_varid, pp_varid, pb_varid, ph_varid, &
@@ -1303,19 +1303,9 @@ fnNMLvar(1) = "runctrl.vars.nml"
                 sts = NF90_DEF_DIM(ncid, "rlat", yfocus, lat_dimid) 
               END IF
               
-              ! define vertical dimension for near-surface variables      
-              IF ( height(ivar) /= -999 ) THEN
-                sts = NF90_DEF_DIM(ncid, "height", 1, height_dimid)
-              END IF
-              
-              ! define vertical dimension for variable on pressure levels    
-              IF ( ( plevel(ivar) /= -999 ) ) THEN
-                sts = NF90_DEF_DIM(ncid, "plev", 1, plev_dimid)
-              END IF
-
-              ! define vertical dimension for variable on pressure levels    
+              ! define vertical dimension for variable at the top of the soil layer    
               IF (TRIM(var_cmip(ivar)) == 'mrsos' ) THEN
-                sts = NF90_DEF_DIM(ncid, "sdepth", 1, depth_dimid)
+                sts = NF90_DEF_DIM(ncid, "depth", 1, depth_dimid)
                 sts = NF90_DEF_DIM(ncid, "bnds", 2, nb2_dimid)
               END IF
 
@@ -1323,7 +1313,7 @@ fnNMLvar(1) = "runctrl.vars.nml"
               IF ((TRIM(var_cmip(ivar)) == 'mrsol') .OR. &
                   (TRIM(var_cmip(ivar)) == 'mrsfl') .OR. &
                   (TRIM(var_cmip(ivar)) == 'tsl')) THEN
-                sts = NF90_DEF_DIM(ncid, "sdepth", SIZE(DZShc), depth_dimid)
+                sts = NF90_DEF_DIM(ncid, "depth", SIZE(DZShc), depth_dimid)
                 sts = NF90_DEF_DIM(ncid, "bnds", 2, nb2_dimid)
               ENDIF
 
@@ -1350,14 +1340,14 @@ fnNMLvar(1) = "runctrl.vars.nml"
                 sts = nf90_def_var(ncid, "lon", NF90_DOUBLE, (/ x_dimid, y_dimid /), lon_varid, fletcher32 = .true.)
                 sts = nf90_def_var_deflate(ncid, lon_varid, 1, 1, 1)
                 sts = nf90_put_att(ncid, lon_varid, "standard_name", "longitude")
-                sts = nf90_put_att(ncid, lon_varid, "long_name", "Longitude")
+                sts = nf90_put_att(ncid, lon_varid, "long_name", "longitude")
                 sts = nf90_put_att(ncid, lon_varid, "units", "degrees_east")
                 sts = nf90_put_att(ncid, lon_varid, "_CoordinateAxisType", "Lon") ! special addon, not needed, but allowed
 
                 sts = nf90_def_var(ncid, "lat", NF90_DOUBLE, (/ x_dimid, y_dimid /), lat_varid, fletcher32 = .true.)
                 sts = nf90_def_var_deflate(ncid, lat_varid, 1, 1, 1)
                 sts = nf90_put_att(ncid, lat_varid, "standard_name", "latitude")
-                sts = nf90_put_att(ncid, lat_varid, "long_name", "Latitude")
+                sts = nf90_put_att(ncid, lat_varid, "long_name", "latitude")
                 sts = nf90_put_att(ncid, lat_varid, "units", "degrees_north")
                 sts = nf90_put_att(ncid, lat_varid, "_CoordinateAxisType", "Lat") ! special addon, not needed, but allowed
 
@@ -1398,11 +1388,10 @@ fnNMLvar(1) = "runctrl.vars.nml"
                 sts = nf90_put_att(ncid, lat_varid, "long_name", "Latitude")
                 sts = nf90_put_att(ncid, lat_varid, "units", "degrees_north") 
 
-		            sts = nf90_def_var(ncid, "crs", NF90_CHAR, rotated_pole_varid)
-		            !sts = nf90_put_att(ncid, rotated_pole_varid, "long_name", "Coordinates of the rotated North Pole")
-		            sts = nf90_put_att(ncid, rotated_pole_varid, "grid_mapping_name", "rotated_latitude_longitude")
-		            sts = nf90_put_att(ncid, rotated_pole_varid, "grid_north_pole_latitude", GeoNPLat)
-		            sts = nf90_put_att(ncid, rotated_pole_varid, "grid_north_pole_longitude", GeoNPLon)
+		sts = nf90_def_var(ncid, "crs", NF90_CHAR, rotated_pole_varid)
+		sts = nf90_put_att(ncid, rotated_pole_varid, "grid_mapping_name", "rotated_latitude_longitude")
+		sts = nf90_put_att(ncid, rotated_pole_varid, "grid_north_pole_latitude", GeoNPLat)
+		sts = nf90_put_att(ncid, rotated_pole_varid, "grid_north_pole_longitude", GeoNPLon)
                 sts = nf90_put_att(ncid, rotated_pole_varid, "earth_radius", erad)
 
 		! additional and useful
@@ -1418,8 +1407,7 @@ fnNMLvar(1) = "runctrl.vars.nml"
 
               ! included for near surface variables at some height
               IF ( height(ivar) /= -999 ) THEN
-                sts = nf90_def_var(ncid, "height", NF90_DOUBLE, (/ height_dimid /), height_varid, fletcher32 = .true.)
-                sts = nf90_def_var_deflate(ncid, height_varid, 1, 1, 1)
+                sts = nf90_def_var(ncid, "height", NF90_DOUBLE, height_varid)
                 sts = nf90_put_att(ncid, height_varid, "standard_name", "height")
                 sts = nf90_put_att(ncid, height_varid, "long_name", "height")
                 sts = nf90_put_att(ncid, height_varid, "units", "m")
@@ -1429,8 +1417,7 @@ fnNMLvar(1) = "runctrl.vars.nml"
 
               ! included for variables on some pressure level
               IF ( plevel(ivar) /= -999 ) THEN
-                sts = nf90_def_var(ncid, "plev", NF90_DOUBLE, (/ plev_dimid /), plev_varid, fletcher32 = .true.)
-                sts = nf90_def_var_deflate(ncid, plev_varid, 1, 1, 1)
+                sts = nf90_def_var(ncid, "plev", NF90_DOUBLE, plev_varid)
                 sts = nf90_put_att(ncid, plev_varid, "standard_name", "air_pressure")
                 sts = nf90_put_att(ncid, plev_varid, "long_name", "pressure")
                 sts = nf90_put_att(ncid, plev_varid, "units", "Pa")
@@ -1445,15 +1432,15 @@ fnNMLvar(1) = "runctrl.vars.nml"
               IF ((TRIM(var_cmip(ivar)) == 'mrsol') .OR. &
                   (TRIM(var_cmip(ivar)) == 'mrsfl') .OR. &
                   (TRIM(var_cmip(ivar)) == 'tsl')) THEN
-                sts = nf90_def_var(ncid, "sdepth", NF90_DOUBLE, (/ depth_dimid /), depth_varid, fletcher32 = .true.)
+                sts = nf90_def_var(ncid, "depth", NF90_DOUBLE, (/ depth_dimid /), depth_varid, fletcher32 = .true.)
                 sts = nf90_def_var_deflate(ncid, depth_varid, 1, 1, 1)
                 sts = nf90_put_att(ncid, depth_varid, "standard_name", "depth")
                 sts = nf90_put_att(ncid, depth_varid, "long_name", "Soil layer depth")
                 sts = nf90_put_att(ncid, depth_varid, "units", "m")
                 sts = nf90_put_att(ncid, depth_varid, "positive", "down")
                 sts = nf90_put_att(ncid, depth_varid, "axis", "Z")
-                sts = nf90_put_att(ncid, depth_varid, "bounds", "sdepth_bnds")
-                sts = nf90_def_var(ncid, "sdepth_bnds", NF90_DOUBLE, (/ nb2_dimid, depth_dimid /), soillayerbnds_varid, fletcher32 = .true.)
+                sts = nf90_put_att(ncid, depth_varid, "bounds", "depth_bnds")
+                sts = nf90_def_var(ncid, "depth_bnds", NF90_DOUBLE, (/ nb2_dimid, depth_dimid /), soillayerbnds_varid, fletcher32 = .true.)
                 sts = nf90_def_var_deflate(ncid, soillayerbnds_varid, 1, 1, 1)
               ENDIF
  
@@ -1468,7 +1455,7 @@ fnNMLvar(1) = "runctrl.vars.nml"
                 sts = nf90_def_var(ncid, "time", NF90_DOUBLE, (/ rec_dimid /), rec_varid, fletcher32 = .true.)
                 sts = nf90_def_var_deflate(ncid, rec_varid, 1, 1, 1)
                 sts = nf90_put_att(ncid, rec_varid, "standard_name", "time")
-                sts = nf90_put_att(ncid, rec_varid, "long_name", "Time")
+                sts = nf90_put_att(ncid, rec_varid, "long_name", "time")
                 sts = nf90_put_att(ncid, rec_varid, "units", "days since " // tstot(1:10) // "T" // tstot(12:19) // "Z" )
                 sts = nf90_put_att(ncid, rec_varid, "calendar", calendar)
                 sts = nf90_put_att(ncid, rec_varid, "axis", "T")
@@ -1576,7 +1563,7 @@ fnNMLvar(1) = "runctrl.vars.nml"
               ELSE IF ( (TRIM(var_cmip(ivar)) == 'mrsol')   .OR. &
                         (TRIM(var_cmip(ivar)) == 'mrsfl')   .OR. &
                 	      (TRIM(var_cmip(ivar)) == 'tsl'  ) ) THEN
-                sts = nf90_put_att(ncid, x_varid, "coordinates", "sdepth lat lon") 
+                sts = nf90_put_att(ncid, x_varid, "coordinates", "depth lat lon") 
               ELSE
                 sts = nf90_put_att(ncid, x_varid, "coordinates", "lat lon")
               END IF
