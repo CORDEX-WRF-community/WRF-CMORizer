@@ -22,7 +22,7 @@
 import csv, sys, urllib.request
 from pathlib import Path
 
-URL = "https://raw.githubusercontent.com/WCRP-CORDEX/data-request-table/main/data-request/dreq_default.csv"
+URL = "https://raw.githubusercontent.com/WCRP-CORDEX/data-request-table/refs/heads/main/cmor-table/datasets.csv"
 REQUEST = Path("data-request.csv")
 WRF = Path("CORDEX_CMIP6_variables.csv")
 FILETYPE = "s"  # s=wrfout; p=wrfpress; x=wrfxtrm
@@ -31,7 +31,7 @@ FREQ = {
     "fx":  ("timefx",  "cmfx"),
     "1hr": ("time1hr", "cm1hr"),
     "3hr": ("time3hr", "cm3hr"),
-    "6hr": ("time6hr", "cm6hr"),
+    "6hr": ("time6hlsr", "cm6hr"),
     "day": ("timeDay", "cmDay"),
     "mon": ("timeMon", "cmMon"),
     "sea": ("timeSea", "cmSea"),
@@ -52,25 +52,6 @@ def read_csv(path, key, required):
             if row.get(key):
                 data.setdefault(row[key], []).append(row)
         return data
-
-
-def agg(row):
-    text = row.get("cell_methods", "").lower()
-    if "time:" not in text:
-        return ""
-    return {
-        "mean": "mean", "point": "point", "maximum": "max",
-        "minimum": "min", "max": "max", "min": "min", "sum": "sum"
-    }.get(text.split("time:")[-1].strip().split()[0], "")
-
-
-def positive(var, rows):
-    s = " ".join(r.get("standard_name", "").lower() for r in rows)
-    if "down" in s or "incoming" in s or var in {"rsdt", "hfso"}:
-        return "'down'"
-    if "upward" in s or "upwelling" in s or "outgoing" in s:
-        return "'up'"
-    return "'-999'"
 
 
 def levels(var):
@@ -95,6 +76,16 @@ def get_variables(args, request):
         ]
     return [v for v in dict.fromkeys(args) if v in request]
 
+def create_metadata(var, request, wrf):
+    rows = request.get(var, [])
+    wrf_rows = wrf.get(var, [])
+
+    if not rows or not wrf_rows:
+        return []
+
+    height, plevel = levels(var)
+    result = []
+
 
 def create_metadata(var, request, wrf):
     rows, wrf_rows = request.get(var, []), wrf.get(var, [])
@@ -104,54 +95,97 @@ def create_metadata(var, request, wrf):
     height, plevel = levels(var)
 
     result = {
-        "cordexID": "999",
         "var_wrf": f"'{wrf_rows[0]['WRF variable']}'",
         "var_cmip": f"'{var}'",
         "standard_name": f"'{rows[0]['standard_name']}'",
         "long_name": f"'{rows[0]['long_name']}'",
         "units": f"'{rows[0]['units']}'",
+        "cell_methods": f"'{rows[0]['cell_methods']}'",
+        "cell_measures": f"'{rows[0]['cell_measures']}'",
         "height": height,
         "plevel": plevel,
-        "positive": positive(var, rows),
+        "positive": f"'{rows[0]['positive']}'",
         "filetype": f"'{FILETYPE}'",
-        "interpolate": "F",
+        "var_comm": f"'{rows[0]['comment']}'",
     }
 
-    # Frequencies actually requested for this variable
-    requested = {
-        r["frequency"]: agg(r)
-        for r in rows
-        if r.get("frequency") in FREQ
-    }
+    # Store frequency-specific metadata
+    for row in rows:
+        freq = row.get("frequency")
 
-    for f, (t, c) in FREQ.items():
-        if f in requested:
-            result[t] = "T"
-            if f == "fx":
-                result[c] = "'point'"
-            else:
-                result[c] = f"'{requested[f]}'"
-        else:
-            result[t] = "F"
-            result[c] = "''"
+        if freq in FREQ:
+
+            freq_name = {
+                "fx": "fx",
+                "1hr": "1hr",
+                "3hr": "3hr",
+                "6hr": "6hr",
+                "day": "Day",
+                "mon": "Mon",
+                "sea": "Sea",
+            }[freq]
+
+            result[f"time{freq_name}"] = "T"
+            result[f"cm{freq_name}"] = f"'{row['cell_methods']}'"
+            result[f"cms{freq_name}"] = f"'{row['cell_measures']}'"
 
     return result
 
-
 def namelist(variables):
-    titles = [
-        "cordexID", "var_wrf", "var_cmip", "standard_name",
-        "long_name", "units", "height", "plevel", "positive",
-        "timefx", "cmfx", "time1hr", "cm1hr", "time3hr", "cm3hr",
-        "time6hr", "cm6hr", "timeDay", "cmDay", "timeMon", "cmMon",
-        "timeSea", "cmSea", "filetype", "interpolate"
+
+    base_titles = [
+        "var_wrf",
+        "var_cmip",
+        "standard_name",
+        "long_name",
+        "units",
+        "height",
+        "plevel",
+        "positive"
     ]
 
-    width = max(len(str(v.get(t, ""))) for t in titles for v in variables)
+    end_titles = [
+        "filetype",
+        "var_comm"
+    ]
+
+    # preserve frequency order
+    freq_order = [
+        ("fx", "Fx"),
+        ("1hr", "1hr"),
+        ("3hr", "3hr"),
+        ("6hr", "6hr"),
+        ("day", "Day"),
+        ("mon", "Mon"),
+        ("sea", "Sea"),
+    ]
+
+    freq_titles = []
+
+    for _, suffix in freq_order:
+
+        for key in (
+            f"time{suffix}",
+            f"cm{suffix}",
+            f"cms{suffix}",
+        ):
+            if any(key in v for v in variables):
+                freq_titles.append(key)
+
+    titles = base_titles + freq_titles + end_titles
+
+    width = max(
+        len(str(v.get(t, "")))
+        for t in titles
+        for v in variables
+    )
 
     return "&vars\n" + "\n".join(
-        f"   {t:<17} = " +
-        " ".join(f"{v.get(t, '')!s:<{width}} ," for v in variables)
+        f"   {t:<17} = "
+        + " ".join(
+            f"{str(v.get(t, '')):<{width}} ,"
+            for v in variables
+        )
         for t in titles
     ) + "\n/\n"
 
@@ -173,7 +207,7 @@ if not Path(REQUEST).exists():
 request = read_csv(
     REQUEST, "out_name",
     {"out_name", "frequency", "units", "long_name",
-     "standard_name", "cell_methods", "priority", "comment"}
+     "standard_name", "cell_methods", "cell_measures", "positive", "comment"}
 )
 
 wrf = read_csv(
