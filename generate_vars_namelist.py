@@ -44,7 +44,8 @@ def read_csv(path, key, required):
     with open(path, encoding="utf-8-sig", newline="") as f:
         r = csv.DictReader(f)
         r.fieldnames = [x.strip() for x in r.fieldnames]
-        if missing := set(required) - set(r.fieldnames):
+        missing = set(required) - set(r.fieldnames)
+        if missing:
             raise RuntimeError(f"{path}: missing {', '.join(sorted(missing))}")
         data = {}
         for row in r:
@@ -84,16 +85,16 @@ def create_metadata(var, request, wrf):
     height, plevel = levels(var)
 
     result = {
-        "var_wrf": f'"{wrf_rows[0]['WRF variable']}"',
+        "var_wrf": f'"{wrf_rows[0]["WRF variable"]}"',
         "var_cmip": f'"{var}"',
-        "standard_name": f'"{rows[0]['standard_name']}"',
-        "long_name": f'"{rows[0]['long_name']}"',
-        "units": f'"{rows[0]['units']}"',
-        "cell_methods": f'"{rows[0]['cell_methods']}"',
-        "cell_measures": f'"{rows[0]['cell_measures']}"',
+        "standard_name": f'"{rows[0]["standard_name"]}"',
+        "long_name": f'"{rows[0]["long_name"]}"',
+        "units": f'"{rows[0]["units"]}"',
+        "cell_methods": f'"{rows[0]["cell_methods"]}"',
+        "cell_measures": f'"{rows[0]["cell_measures"]}"',
         "height": height,
         "plevel": plevel,
-        "positive": f'"{rows[0]['positive']}"',
+        "positive": f'"{rows[0]["positive"]}"',
         "filetype": f'"{FILETYPE}"',
         "var_comm": f'"{rows[0]["comment"]}"',
     }
@@ -115,8 +116,8 @@ def create_metadata(var, request, wrf):
             }[freq]
 
             result[f"time{freq_name}"] = "T"
-            result[f"cm{freq_name}"] = f'"{row['cell_methods']}"'
-            result[f"cms{freq_name}"] = f'"{row['cell_measures']}"'
+            result[f"cm{freq_name}"] = f'"{row["cell_methods"]}"'
+            result[f"cms{freq_name}"] = f'"{row["cell_measures"]}"'
 
     return result
 
@@ -205,7 +206,11 @@ wrf = read_csv(
 )
 
 variables = get_variables(args, request)
-result = [v for x in variables if (v := create_metadata(x, request, wrf))]
+result = []
+for x in variables:
+    v = create_metadata(x, request, wrf)
+    if v:
+        result.append(v)
 
 if not result:
     raise RuntimeError("No variables could be created.")
