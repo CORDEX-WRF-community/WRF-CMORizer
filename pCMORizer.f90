@@ -1580,15 +1580,15 @@ fnNMLvar(1) = "runctrl.vars.nml"
 
               !-----------------------------------------------------------------
               ! Fill time dimension for instantaneous variables
-              IF ( cell_methods(ivar) == "point" ) THEN  
+              IF ( agg_method(ivar) == "point" ) THEN  
                 sts = NF90_PUT_VAR(ncid, rec_varid, TimeRefArraySubset(:,1) )
               END IF
 
               ! Fill time dimension for averaged variables                          
-              IF ( ( cell_methods(ivar) == "mean" ) .OR. &
-                   ( cell_methods(ivar) == "sum" ) .OR. &
-                   ( cell_methods(ivar) == "minimum" ) .OR. &
-                   ( cell_methods(ivar) == "maximum" ) ) THEN
+              IF ( ( agg_method(ivar) == "mean" ) .OR. &
+                   ( agg_method(ivar) == "sum" ) .OR. &
+                   ( agg_method(ivar) == "minimum" ) .OR. &
+                   ( agg_method(ivar) == "maximum" ) ) THEN
                 TimeRefArraySubsetMean (:) = TimeRefArraySubset(:,1) + ( 0.5_8 * (1._8 / (24._8/dtHours) ) )
                 sts = NF90_PUT_VAR(ncid, rec_varid, TimeRefArraySubsetMean(:) )                 
                 Time_bnds(1,:) = TimeRefArraySubset(:,1)
@@ -2842,8 +2842,8 @@ fnNMLvar(1) = "runctrl.vars.nml"
             PRINT *, "variable to read/write with no additional processing = ", var_wrf(ivar)  
             sts = NF90_INQ_VARID(ncidin, TRIM(var_wrf(ivar)), varid)
   
-            IF ( ( cell_methods(ivar) == "minimum" ) .OR. &
-                 ( cell_methods(ivar) == "maximum" ) ) THEN
+            IF ( ( agg_method(ivar) == "minimum" ) .OR. &
+                 ( agg_method(ivar) == "maximum" ) ) THEN
               sts = NF90_GET_VAR(ncidin, varid, data_in(:,:), &
                     START = (/ xoffset, yoffset, it+1 /), COUNT = (/ xfocus, yfocus, 1 /) )
             ELSE 
