@@ -1508,10 +1508,10 @@ fnNMLvar(1) = "runctrl.vars.nml"
               sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "source", source)
               sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "source_id", source_id)
               sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "source_type", source_type)
+              sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "version_realization", version_realization)
               sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "tracking_id","hdl:21.14103/" //trackingID)
               sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "variable_id", var_cmip(ivar))
               sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "comment", comment)
-              sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "version_realization", version_realization)
 
               !-----------------------------------------------------------------
               ! always included -- definition of the individual variable
