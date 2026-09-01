@@ -119,7 +119,42 @@ def create_metadata(var, request, wrf):
             result[f"cm{freq_name}"] = f'"{row["cell_methods"]}"'
             result[f"cms{freq_name}"] = f'"{row["cell_measures"]}"'
 
+    # ------------------------------------------------------------
+    # Ensure all hourly frequencies are available
+    #
+    # If one hourly frequency exists, use its metadata for
+    # the other hourly frequencies.
+    #
+    # If none exists, use the default values.
+    # ------------------------------------------------------------
+
+    hourly = ["1hr", "3hr", "6hr"]
+
+    # Find an available hourly frequency
+    source_freq = next(
+        (
+            freq for freq in hourly
+            if f"time{freq}" in result
+        ),
+        None
+    )
+
+    if source_freq:
+        # Copy the available hourly information
+        for freq in hourly:
+            result[f"time{freq}"] = result[f"time{source_freq}"]
+            result[f"cm{freq}"] = result[f"cm{source_freq}"]
+            result[f"cms{freq}"] = result[f"cms{source_freq}"]
+
+    else:
+        # No hourly frequency available: use defaults
+        for freq in hourly:
+            result[f"time{freq}"] = "T"
+            result[f"cm{freq}"] = '"area: mean time: point"'
+            result[f"cms{freq}"] = '"area: areacella"'
+
     return result
+
 
 def namelist(variables):
 
@@ -139,21 +174,47 @@ def namelist(variables):
         "var_comm"
     ]
 
-    # preserve frequency order
-    freq_order = [
-        ("fx", "Fx"),
-        ("1hr", "1hr"),
-        ("3hr", "3hr"),
-        ("6hr", "6hr"),
-        ("day", "Day"),
-        ("mon", "Mon"),
-        ("sea", "Sea"),
-    ]
-
     freq_titles = []
 
-    for _, suffix in freq_order:
+    # ------------------------------------------------------------
+    # Fixed fields
+    # ------------------------------------------------------------
+    if any(
+        key in v
+        for v in variables
+        for key in ("timeFx", "cmFx", "cmsFx",
+                    "timefx", "cmfx", "cmsfx")
+    ):
+        freq_titles.extend([
+            "timefx",
+            "cmfx",
+            "cmsfx",
+        ])
+            
+        for v in variables:
+            if "timefx" not in v:
+                v["timefx"] = "T"
 
+            if "cmfx" not in v:
+                v["cmfx"] = '"area: mean"'
+
+            if "cmsfx" not in v:
+                v["cmsfx"] = '"area: areacella"'
+
+    # ------------------------------------------------------------
+    # Always include all hourly frequencies
+    # ------------------------------------------------------------
+    for suffix in ("1hr", "3hr", "6hr"):
+        freq_titles.extend([
+            f"time{suffix}",
+            f"cm{suffix}",
+            f"cms{suffix}",
+        ])
+
+    # ------------------------------------------------------------
+    # Daily, monthly and seasonal frequencies
+    # ------------------------------------------------------------
+    for suffix in ("Day", "Mon", "Sea"):
         for key in (
             f"time{suffix}",
             f"cm{suffix}",
@@ -178,7 +239,6 @@ def namelist(variables):
         )
         for t in titles
     ) + "\n/\n"
-
 
 # ============================================================
 # RUN
