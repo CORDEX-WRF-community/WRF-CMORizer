@@ -23,7 +23,9 @@ import csv, sys, urllib.request
 from pathlib import Path
 
 URL = "https://raw.githubusercontent.com/WCRP-CORDEX/data-request-table/refs/heads/main/cmor-table/datasets.csv"
+URL_FALLBACK = "https://raw.githubusercontent.com/impetus4change/T32-CPRCM/refs/heads/main/data-request-fpsurbrcc.csv"
 REQUEST = Path("data-request.csv")
+REQUEST_FALLBACK = Path("data-request_backup.csv")
 WRF = Path("CORDEX_CMIP6_variables.csv")
 FILETYPE = "s"  # s=wrfout; p=wrfpress; x=wrfxtrm
 
@@ -250,27 +252,41 @@ name = "_".join(args)
 if not args:
     raise SystemExit("Usage: python generate_namelist.py <variable> [variable ...]")
 
+requests = [(URL, REQUEST)]
 
-if not Path(REQUEST).exists():
-    urllib.request.urlretrieve(URL, REQUEST)
+# Download request files
+if "URL_FALLBACK" in globals():
+    requests.append((URL_FALLBACK, REQUEST_FALLBACK))
 
-request = read_csv(
-    REQUEST, "out_name",
-    {"out_name", "frequency", "units", "long_name",
-     "standard_name", "cell_methods", "cell_measures", "positive", "comment"}
-)
+for url, file in requests:
+    if not Path(file).exists():
+        urllib.request.urlretrieve(url, file)
+
+
+fields = {
+    "out_name", "frequency", "units", "long_name",
+    "standard_name", "cell_methods", "cell_measures",
+    "positive", "comment"
+}
+
+request = read_csv(REQUEST, "out_name", fields)
+
+if "URL_FALLBACK" in globals():
+    request = {
+        **read_csv(REQUEST_FALLBACK, "out_name", fields),
+        **request,
+    }
+
 
 wrf = read_csv(
     WRF, "output variable name",
     {"output variable name", "WRF variable"}
 )
 
-variables = get_variables(args, request)
-result = []
-for x in variables:
-    v = create_metadata(x, request, wrf)
-    if v:
-        result.append(v)
+result = [
+    v for x in get_variables(args, request)
+    if (v := create_metadata(x, request, wrf))
+]
 
 if not result:
     raise RuntimeError("No variables could be created.")
