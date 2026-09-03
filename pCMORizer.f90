@@ -1544,9 +1544,9 @@ fnNMLvar(1) = "runctrl.vars.nml"
               sts = nf90_put_att(ncid, x_varid, "standard_name", standard_name(ivar))
               sts = nf90_put_att(ncid, x_varid, "long_name", long_name(ivar))
               sts = nf90_put_att(ncid, x_varid, "units", units(ivar))
-              IF ( positive(ivar) /= '-999' ) THEN
-                sts = nf90_put_att(ncid, x_varid, "positive", positive(ivar))
-              END IF
+              !IF ( positive(ivar) /= "-999" ) THEN
+              !  sts = nf90_put_att(ncid, x_varid, "positive", positive(ivar))
+              !END IF
               
 
               sts = nf90_put_att(ncid, x_varid, "cell_methods", TRIM(cell_methods(ivar)))
