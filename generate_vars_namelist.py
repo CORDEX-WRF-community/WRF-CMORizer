@@ -283,10 +283,11 @@ wrf = read_csv(
     {"output variable name", "WRF variable"}
 )
 
-result = [
-    v for x in get_variables(args, request)
-    if (v := create_metadata(x, request, wrf))
-]
+result = []
+for x in get_variables(args, request):
+    v = create_metadata(x, request, wrf)
+    if v:
+        result.append(v)
 
 if not result:
     raise RuntimeError("No variables could be created.")
