@@ -41,11 +41,11 @@ MODULE NamelistHandling
   INTEGER, PARAMETER :: nvars = 39 ! 39 maximum number of vars per namelist, keep const at max number
 
   CHARACTER (len = 300) :: activity_id, contact, Conventions, domain_id, att_domain, &
-  	driving_experiment_id,driving_experiment, &
-  	driving_institution_id, driving_source_id, driving_variant_label, grid, institution, &
-  	institution_id, license, mip_era, product, project_id, source, &
-  	source_id, source_type, version, version_realization, references, tracking_id, &
-	variable_id
+        driving_experiment_id,driving_experiment, &
+        driving_institution_id, driving_source_id, driving_variant_label, grid, institution, &
+        institution_id, license, mip_era, product, project_id, source, &
+        source_id, source_type, version, version_realization, references, tracking_id, &
+        title, variable_id
 
   CHARACTER (len = 1000) :: comment
 
@@ -63,10 +63,11 @@ MODULE NamelistHandling
   CHARACTER (len = 19) :: tsact, teact
   INTEGER :: nvar
                      
-
 ! reading from runctrl.vars.nml*
   CHARACTER (LEN = 100), DIMENSION(nvars) :: var_wrf, var_cmip, standard_name, &
-    long_name, units, filetype, cmfx, cm1hr, cm3hr, cm6hr, cmDay, cmMon, cmSea, positive
+    long_name, units, positive, cmfx, cm1hr, cm3hr, cm6hr, cmDay, cmMon, cmSea, &
+    cmsfx, cms1hr, cms3hr, cms6hr, cmsDay, cmsMon, cmsSea, filetype
+  CHARACTER (len = 1000), DIMENSION(nvars) :: var_comm
   INTEGER, DIMENSION(nvars):: height, plevel, cordexID
   LOGICAL, DIMENSION(nvars):: time1hr, time3hr, time6hr, timeDay, timeMon, timeSea, &
      interpolate, timefx
@@ -89,8 +90,11 @@ MODULE NamelistHandling
     aggregation_individually, tsact, teact
     
   NAMELIST / vars / var_wrf, var_cmip, standard_name, long_name, units, &
-    plevel, height, time1hr, time3hr, time6hr, timeDay, timeMon, timeSea, timefx, &
-    filetype, cmfx, cm1hr, cm3hr, cm6hr, cmDay, cmMon, cmSea, interpolate, cordexID, positive
+    plevel, height, positive, &
+    time1hr, time3hr, time6hr, timeDay, timeMon, timeSea, timefx, &
+    cmfx, cm1hr, cm3hr, cm6hr, cmDay, cmMon, cmSea, &
+    cmsfx, cms1hr, cms3hr, cms6hr, cmsDay, cmsMon, cmsSea, &
+    filetype, var_comm
 
 END MODULE NamelistHandling
 
@@ -214,8 +218,8 @@ REAL(KIND=8), PARAMETER :: fw1=3.536240e-4,fw2=2.932836e-5,fw3=2.616898e-7,fw4=8
 
 ! new netCDF file
 INTEGER :: ncid, ncidin, ncidin0
-INTEGER :: lon_dimid, lat_dimid, rec_dimid, height_dimid, &
-  nb2_dimid, x_dimid, y_dimid, plev_dimid, depth_dimid
+INTEGER :: lon_dimid, lat_dimid, rec_dimid, &
+  nb2_dimid, x_dimid, y_dimid, depth_dimid
 
 INTEGER :: varid, x_varid, lon_varid, lat_varid, rlon_varid, rlat_varid, hgt_varid, &
   rotated_pole_varid, lambert_varid, height_varid, rec_varid, pp_varid, pb_varid, ph_varid, &
@@ -225,7 +229,7 @@ INTEGER :: varid, x_varid, lon_varid, lat_varid, rlon_varid, rlat_varid, hgt_var
   sfcevp_varid, potevp_varid, sfroff_varid, udroff_varid, acsnom_varid, q2_varid, &
   sinalpha_varid, cosalpha_varid, plev_varid, plevbnds_varid, psfc_varid, &
   depth_varid, soillayerbnds_varid, cd_varid, xlon_varid, ylat_varid, t00_varid, p00_varid, &
-  mask_varid, sh2o_varid
+  mask_varid, sh2o_varid, ptop_varid
 
 ! input data general query
 INTEGER :: ncid_in, ndims_in, nvars_in, ngatts_in, unlimdimid_in
@@ -261,7 +265,10 @@ REAL :: &
   ! vertical interpolation
   slope         , &
   low_lev       , &
-  high_lev
+  high_lev      , &
+  dgph 
+
+REAL, DIMENSION(1) ::  ptop_in
 
 ! Time vec stuff
 REAL(KIND=8), DIMENSION(:), ALLOCATABLE :: &
@@ -295,11 +302,6 @@ REAL, DIMENSION(:,:), ALLOCATABLE :: &
   li            , &
   lcl           , &
   lfc           , &
-  prw           , &
-  clwvi         , &
-  clivi         , &
-  clgvi         , &
-  clhvi         , &
   sinalpha_in   , &
   cosalpha_in   , &
   psfc_in       , &
@@ -357,8 +359,9 @@ REAL, DIMENSION(:,:,:), ALLOCATABLE :: &
   pl_in_u     , &
   pl_in_v     , &
   smois_in    , & 
-  sh2o_in    , & 
-  tslb_in  
+  sh2o_in     , & 
+  tslb_in     , &
+  pres_in
 
 
 ! 4D variables
@@ -388,7 +391,7 @@ CHARACTER (LEN=2) :: InDateTimeMonthStr, FirstHourStr, FirstMinuteStr, LastDaySt
   LastHourStr, LastMinuteStr, tsactMonthStr, tsactDayStr, tsactHourStr, tsactMinuteStr, &
   teactMonthStr, teactDayStr, teactHourStr, teactMinuteStr
 CHARACTER (LEN=12) :: FileNameStartDateTime, FileNameEndDateTime
-CHARACTER (LEN=100), DIMENSION(nvars) :: cell_methods
+CHARACTER (LEN=100), DIMENSION(nvars) :: cell_methods, agg_method, cell_measures
 INTEGER :: InDateTimeYearPrev = 0, InDateTimeMonthPrev = 0
 INTEGER :: tsactYear, tsactMonth, tsactDay, tsactHour, tsactMinute, tsactSecond, & 
   teactYear, teactMonth, teactDay, teactHour, teactMinute, teactSecond
@@ -680,30 +683,26 @@ fnNMLvar(1) = "runctrl.vars.nml"
     SELECT CASE (frequency(ifrq))
     CASE ('1hr')
       cell_methods(:) = cm1hr(:)
+      cell_measures(:) = cms1hr(:)
+      agg_method(:) = get_cell_method(cm1hr(:))
       procflag(:) = time1hr(:)
       dtHours = 1.
     CASE ('3hr')
       cell_methods(:) = cm3hr(:)
+      cell_measures(:) = cms3hr(:)
+      agg_method(:) = get_cell_method(cm3hr(:))
       procflag(:) = time3hr(:)
       dtHours = 3.
     CASE ('6hr')
       cell_methods(:) = cm6hr(:)
+      cell_measures(:) = cms6hr(:)
+      agg_method(:) = get_cell_method(cm6hr(:))
       procflag(:) = time6hr(:)
       dtHours = 6.
-    CASE ('day')
-      cell_methods(:) = cmDay(:)
-      procflag(:) = timeDay(:)
-      dtHours = 24.
-    CASE ('mon')
-      STOP "monthly aggregation not yet implemented"
-      cell_methods(:) = cmMon(:)
-      procflag(:) = timeMon(:)
-    CASE ('sem')
-      STOP "seasonal aggregation not yet implemented"
-      cell_methods(:) = cmSea(:)
-      procflag(:) = timeSea(:)
     CASE ('fx')
       cell_methods(:) = cmfx(:)
+      cell_measures(:) = cmsfx(:)
+      agg_method(:) = 'get_cell_method(cmfx(:))'
       procflag(:) = timefx(:)
       dtHours = 1.
     CASE DEFAULT
@@ -811,8 +810,8 @@ fnNMLvar(1) = "runctrl.vars.nml"
         ! see "variable to read/write with no additional processing" part
         PRINT *, "number of timesteps in the input data: ", InDimLenRec
         ! KGo: not in my data
-        IF ( ( cell_methods(ivar) == "minimum" ) .OR. &
-             ( cell_methods(ivar) == "maximum" ) ) THEN
+        IF ( ( agg_method(ivar) == "minimum" ) .OR. &
+             ( agg_method(ivar) == "maximum" ) ) THEN
           InDimLenRec = InDimLenRec - 1
           PRINT *, "fixing number of input timesteps for min/max: ", InDimLenRec
         END IF
@@ -871,8 +870,8 @@ fnNMLvar(1) = "runctrl.vars.nml"
        !      if inputtimesteptruncate=T, then there is a gap in the data, i.e., one timestep
        !      at the end / beginning of new day remains missing
           IF (inputtimesteptruncate) THEN 
-            IF ( ( it .EQ. InDimLenRec ) .AND. ( ( cell_methods(ivar) == "mean" ) .OR. &
-                 ( cell_methods(ivar) == "sum" ) ) ) THEN
+            IF ( ( it .EQ. InDimLenRec ) .AND. ( ( agg_method(ivar) == "mean" ) .OR. &
+                 ( agg_method(ivar) == "sum" ) ) ) THEN
               PRINT *, "skip last input timestep to avoid NaNs in the following aggregation file ", InDimLenRec
               EXIT
             END IF
@@ -982,10 +981,10 @@ fnNMLvar(1) = "runctrl.vars.nml"
               END DO
               PRINT *, "size ipos", SIZE(ipos)
               PRINT *, "counter = ", counter
-              !IF ( ( cell_methods(ivar) == "mean" ) .OR. &
-              !     ( cell_methods(ivar) == "sum" ) .OR. &
-              !     ( cell_methods(ivar) == "minimum" ) .OR. &
-              !     ( cell_methods(ivar) == "maximum" ) ) THEN
+              !IF ( ( agg_method(ivar) == "mean" ) .OR. &
+              !     ( agg_method(ivar) == "sum" ) .OR. &
+              !     ( agg_method(ivar) == "minimum" ) .OR. &
+              !     ( agg_method(ivar) == "maximum" ) ) THEN
               !  counter = counter - 1
               !  ipos = ipos(1:counter)
               !  PRINT *, "size ipos", SIZE(ipos)
@@ -1066,7 +1065,7 @@ fnNMLvar(1) = "runctrl.vars.nml"
                   (frequency(ifrq) == '3hr') .OR. &
                   (frequency(ifrq) == '6hr')) THEN
                   
-              IF ( (cell_methods(ivar) == "mean") .OR. (cell_methods(ivar) == "sum") ) THEN 
+              IF ( (agg_method(ivar) == "mean") .OR. (agg_method(ivar) == "sum") ) THEN 
                 !WRITE (tsactHourStr,'(I2.2)') INT( FLOOR( ((dtHours/2.)*60.) / 60. ) )
                 WRITE (tsactMinuteStr,'(I2.2)') INT( MOD( (dtHours/2.)*60., 60. ) )
                 !WRITE (teactHourStr,'(I2.2)') INT( FLOOR( ( (24.*60.) - (dtHours/2.)*60.)  / 60. ) )
@@ -1108,7 +1107,7 @@ fnNMLvar(1) = "runctrl.vars.nml"
               WRITE (InDateTimeMonthStr,'(I2.2)') InDateTimeMonth(it)              
               WRITE (LastDayStr,'(I2.2)') INT(TimeRefArraySubset(0,5))
 
-              IF ( (cell_methods(ivar) == "mean") .OR. (cell_methods(ivar) == "sum") ) THEN 
+              IF ( (agg_method(ivar) == "mean") .OR. (agg_method(ivar) == "sum") ) THEN 
                 WRITE (FirstHourStr,'(I2.2)') INT( FLOOR( ((dtHours/2.)*60.) / 60. ) )
                 WRITE (FirstMinuteStr,'(I2.2)') INT( MOD( (dtHours/2.)*60., 60. ) )
                 WRITE (LastHourStr,'(I2.2)') INT( FLOOR( ( (24.*60.) - (dtHours/2.)*60.)  / 60. ) )
@@ -1138,7 +1137,7 @@ fnNMLvar(1) = "runctrl.vars.nml"
                     (frequency(ifrq) == '3hr') .OR. &
                     (frequency(ifrq) == '6hr')) THEN
 
-                  IF ( (cell_methods(ivar) == "mean") .OR. (cell_methods(ivar) == "sum") ) THEN
+                  IF ( (agg_method(ivar) == "mean") .OR. (agg_method(ivar) == "sum") ) THEN
                     FileNameStartDateTime = InDateTimeYearStr//InDateTimeMonthStr//"01"//FirstHourStr//FirstMinuteStr
                     FileNameEndDateTime = InDateTimeYearStr//InDateTimeMonthStr//LastDayStr//LastHourStr//LastMinuteStr
                   ELSE
@@ -1162,7 +1161,7 @@ fnNMLvar(1) = "runctrl.vars.nml"
                 IF ((frequency(ifrq) == '1hr') .OR. &
                     (frequency(ifrq) == '3hr') .OR. &
                     (frequency(ifrq) == '6hr')) THEN
-                  IF ( (cell_methods(ivar) == "mean") .OR. (cell_methods(ivar) == "sum") ) THEN
+                  IF ( (agg_method(ivar) == "mean") .OR. (agg_method(ivar) == "sum") ) THEN
                     FileNameStartDateTime = InDateTimeYearStr//"0101"//FirstHourStr//FirstMinuteStr
                     FileNameEndDateTime = InDateTimeYearStr//"1231"//LastHourStr//LastMinuteStr
                   ELSE
@@ -1193,7 +1192,6 @@ fnNMLvar(1) = "runctrl.vars.nml"
             ! /hpc/shared/int/eva/ramod_WRF_CRPGL/WRFrv021rXXrcc3CpCdx/postpro/
             ! EUR-44/CRPGL/ECMWF-ERAINT/evaluation/r1i1p1/CRPGL-WRFARW331/v1
             pn_out = TRIM(project_id)                   // "/" // &
-                     TRIM(mip_era)                      // "/" // &
                      TRIM(activity_id)                 	// "/" // &
                      TRIM(domain_id)                  	// "/" // &
                      TRIM(institution_id)              	// "/" // &
@@ -1288,10 +1286,10 @@ fnNMLvar(1) = "runctrl.vars.nml"
               ! define time dimension
               IF (frequency(ifrq) /= 'fx') THEN
                 sts = NF90_DEF_DIM(ncid, "time", NF90_UNLIMITED, rec_dimid)
-                IF ( ( cell_methods(ivar) == "mean" ) .OR. &
-                     ( cell_methods(ivar) == "sum" ) .OR. &
-                     ( cell_methods(ivar) == "minimum" ) .OR. &
-                     ( cell_methods(ivar) == "maximum" ) ) THEN
+                IF ( ( agg_method(ivar) == "mean" ) .OR. &
+                     ( agg_method(ivar) == "sum" ) .OR. &
+                     ( agg_method(ivar) == "minimum" ) .OR. &
+                     ( agg_method(ivar) == "maximum" ) ) THEN
                   sts = NF90_DEF_DIM(ncid, "bnds", 2, nb2_dimid)
                 ENDIF
               END IF
@@ -1305,19 +1303,9 @@ fnNMLvar(1) = "runctrl.vars.nml"
                 sts = NF90_DEF_DIM(ncid, "rlat", yfocus, lat_dimid) 
               END IF
               
-              ! define vertical dimension for near-surface variables      
-              IF ( height(ivar) /= -999 ) THEN
-                sts = NF90_DEF_DIM(ncid, "height", 1, height_dimid)
-              END IF
-              
-              ! define vertical dimension for variable on pressure levels    
-              IF ( ( plevel(ivar) /= -999 ) ) THEN
-                sts = NF90_DEF_DIM(ncid, "plev", 1, plev_dimid)
-              END IF
-
-              ! define vertical dimension for variable on pressure levels    
+              ! define vertical dimension for variable at the top of the soil layer    
               IF (TRIM(var_cmip(ivar)) == 'mrsos' ) THEN
-                sts = NF90_DEF_DIM(ncid, "sdepth", 1, depth_dimid)
+                sts = NF90_DEF_DIM(ncid, "depth", 1, depth_dimid)
                 sts = NF90_DEF_DIM(ncid, "bnds", 2, nb2_dimid)
               END IF
 
@@ -1325,7 +1313,7 @@ fnNMLvar(1) = "runctrl.vars.nml"
               IF ((TRIM(var_cmip(ivar)) == 'mrsol') .OR. &
                   (TRIM(var_cmip(ivar)) == 'mrsfl') .OR. &
                   (TRIM(var_cmip(ivar)) == 'tsl')) THEN
-                sts = NF90_DEF_DIM(ncid, "sdepth", SIZE(DZShc), depth_dimid)
+                sts = NF90_DEF_DIM(ncid, "depth", SIZE(DZShc), depth_dimid)
                 sts = NF90_DEF_DIM(ncid, "bnds", 2, nb2_dimid)
               ENDIF
 
@@ -1338,28 +1326,28 @@ fnNMLvar(1) = "runctrl.vars.nml"
                 sts = nf90_def_var(ncid, "x", NF90_DOUBLE, (/ x_dimid /), xlon_varid, fletcher32 = .true.)
                 sts = nf90_def_var_deflate(ncid, xlon_varid, 1, 1, 1)
                 sts = nf90_put_att(ncid, xlon_varid, "standard_name", "projection_x_coordinate")
-                sts = nf90_put_att(ncid, xlon_varid, "long_name", "X Coordinate Of Projection")
+                sts = nf90_put_att(ncid, xlon_varid, "long_name", "x coordinate of projection")
                 sts = nf90_put_att(ncid, xlon_varid, "units", "m")
                 sts = nf90_put_att(ncid, xlon_varid, "axis", "X")
   
                 sts = nf90_def_var(ncid, "y", NF90_DOUBLE, (/ y_dimid /), ylat_varid, fletcher32 = .true.)
                 sts = nf90_def_var_deflate(ncid, ylat_varid, 1, 1, 1)
                 sts = nf90_put_att(ncid, ylat_varid, "standard_name", "projection_y_coordinate")
-                sts = nf90_put_att(ncid, ylat_varid, "long_name", "Y Coordinate Of Projection")
+                sts = nf90_put_att(ncid, ylat_varid, "long_name", "y coordinate of projection")
                 sts = nf90_put_att(ncid, ylat_varid, "units", "m")
                 sts = nf90_put_att(ncid, ylat_varid, "axis", "Y")
  
                 sts = nf90_def_var(ncid, "lon", NF90_DOUBLE, (/ x_dimid, y_dimid /), lon_varid, fletcher32 = .true.)
                 sts = nf90_def_var_deflate(ncid, lon_varid, 1, 1, 1)
                 sts = nf90_put_att(ncid, lon_varid, "standard_name", "longitude")
-                sts = nf90_put_att(ncid, lon_varid, "long_name", "Longitude")
+                sts = nf90_put_att(ncid, lon_varid, "long_name", "longitude")
                 sts = nf90_put_att(ncid, lon_varid, "units", "degrees_east")
                 sts = nf90_put_att(ncid, lon_varid, "_CoordinateAxisType", "Lon") ! special addon, not needed, but allowed
 
                 sts = nf90_def_var(ncid, "lat", NF90_DOUBLE, (/ x_dimid, y_dimid /), lat_varid, fletcher32 = .true.)
                 sts = nf90_def_var_deflate(ncid, lat_varid, 1, 1, 1)
                 sts = nf90_put_att(ncid, lat_varid, "standard_name", "latitude")
-                sts = nf90_put_att(ncid, lat_varid, "long_name", "Latitude")
+                sts = nf90_put_att(ncid, lat_varid, "long_name", "latitude")
                 sts = nf90_put_att(ncid, lat_varid, "units", "degrees_north")
                 sts = nf90_put_att(ncid, lat_varid, "_CoordinateAxisType", "Lat") ! special addon, not needed, but allowed
 
@@ -1400,11 +1388,10 @@ fnNMLvar(1) = "runctrl.vars.nml"
                 sts = nf90_put_att(ncid, lat_varid, "long_name", "Latitude")
                 sts = nf90_put_att(ncid, lat_varid, "units", "degrees_north") 
 
-		            sts = nf90_def_var(ncid, "crs", NF90_CHAR, rotated_pole_varid)
-		            !sts = nf90_put_att(ncid, rotated_pole_varid, "long_name", "Coordinates of the rotated North Pole")
-		            sts = nf90_put_att(ncid, rotated_pole_varid, "grid_mapping_name", "rotated_latitude_longitude")
-		            sts = nf90_put_att(ncid, rotated_pole_varid, "grid_north_pole_latitude", GeoNPLat)
-		            sts = nf90_put_att(ncid, rotated_pole_varid, "grid_north_pole_longitude", GeoNPLon)
+		sts = nf90_def_var(ncid, "crs", NF90_CHAR, rotated_pole_varid)
+		sts = nf90_put_att(ncid, rotated_pole_varid, "grid_mapping_name", "rotated_latitude_longitude")
+		sts = nf90_put_att(ncid, rotated_pole_varid, "grid_north_pole_latitude", GeoNPLat)
+		sts = nf90_put_att(ncid, rotated_pole_varid, "grid_north_pole_longitude", GeoNPLon)
                 sts = nf90_put_att(ncid, rotated_pole_varid, "earth_radius", erad)
 
 		! additional and useful
@@ -1420,8 +1407,7 @@ fnNMLvar(1) = "runctrl.vars.nml"
 
               ! included for near surface variables at some height
               IF ( height(ivar) /= -999 ) THEN
-                sts = nf90_def_var(ncid, "height", NF90_DOUBLE, (/ height_dimid /), height_varid, fletcher32 = .true.)
-                sts = nf90_def_var_deflate(ncid, height_varid, 1, 1, 1)
+                sts = nf90_def_var(ncid, "height", NF90_DOUBLE, height_varid)
                 sts = nf90_put_att(ncid, height_varid, "standard_name", "height")
                 sts = nf90_put_att(ncid, height_varid, "long_name", "height")
                 sts = nf90_put_att(ncid, height_varid, "units", "m")
@@ -1431,14 +1417,13 @@ fnNMLvar(1) = "runctrl.vars.nml"
 
               ! included for variables on some pressure level
               IF ( plevel(ivar) /= -999 ) THEN
-                sts = nf90_def_var(ncid, "plev", NF90_DOUBLE, (/ plev_dimid /), plev_varid, fletcher32 = .true.)
-                sts = nf90_def_var_deflate(ncid, plev_varid, 1, 1, 1)
+                sts = nf90_def_var(ncid, "plev", NF90_DOUBLE, plev_varid)
                 sts = nf90_put_att(ncid, plev_varid, "standard_name", "air_pressure")
                 sts = nf90_put_att(ncid, plev_varid, "long_name", "pressure")
                 sts = nf90_put_att(ncid, plev_varid, "units", "Pa")
                 sts = nf90_put_att(ncid, plev_varid, "positive", "down")
                 sts = nf90_put_att(ncid, plev_varid, "axis", "Z")
-                IF ( cell_methods(ivar) == "vmean" ) THEN ! if this is layers over which there has been some everaging
+                IF ( agg_method(ivar) == "vmean" ) THEN ! if this is layers over which there has been some everaging
                   sts = nf90_put_att(ncid, plev_varid, "bounds", "plev_bnds")
                 END IF
               END IF
@@ -1447,20 +1432,20 @@ fnNMLvar(1) = "runctrl.vars.nml"
               IF ((TRIM(var_cmip(ivar)) == 'mrsol') .OR. &
                   (TRIM(var_cmip(ivar)) == 'mrsfl') .OR. &
                   (TRIM(var_cmip(ivar)) == 'tsl')) THEN
-                sts = nf90_def_var(ncid, "sdepth", NF90_DOUBLE, (/ depth_dimid /), depth_varid, fletcher32 = .true.)
+                sts = nf90_def_var(ncid, "depth", NF90_DOUBLE, (/ depth_dimid /), depth_varid, fletcher32 = .true.)
                 sts = nf90_def_var_deflate(ncid, depth_varid, 1, 1, 1)
                 sts = nf90_put_att(ncid, depth_varid, "standard_name", "depth")
                 sts = nf90_put_att(ncid, depth_varid, "long_name", "Soil layer depth")
                 sts = nf90_put_att(ncid, depth_varid, "units", "m")
                 sts = nf90_put_att(ncid, depth_varid, "positive", "down")
                 sts = nf90_put_att(ncid, depth_varid, "axis", "Z")
-                sts = nf90_put_att(ncid, depth_varid, "bounds", "sdepth_bnds")
-                sts = nf90_def_var(ncid, "sdepth_bnds", NF90_DOUBLE, (/ nb2_dimid, depth_dimid /), soillayerbnds_varid, fletcher32 = .true.)
+                sts = nf90_put_att(ncid, depth_varid, "bounds", "depth_bnds")
+                sts = nf90_def_var(ncid, "depth_bnds", NF90_DOUBLE, (/ nb2_dimid, depth_dimid /), soillayerbnds_varid, fletcher32 = .true.)
                 sts = nf90_def_var_deflate(ncid, soillayerbnds_varid, 1, 1, 1)
               ENDIF
  
               ! included variabels averaged between levels  
-              IF ( cell_methods(ivar) == "vmean" ) THEN
+              IF ( agg_method(ivar) == "vmean" ) THEN
                 sts = nf90_def_var(ncid, "plev_bnds", NF90_DOUBLE, (/ nb2_dimid /), plevbnds_varid, fletcher32 = .true.)
                 sts = nf90_def_var_deflate(ncid, plevbnds_varid, 1, 1, 1)
               END IF
@@ -1470,21 +1455,21 @@ fnNMLvar(1) = "runctrl.vars.nml"
                 sts = nf90_def_var(ncid, "time", NF90_DOUBLE, (/ rec_dimid /), rec_varid, fletcher32 = .true.)
                 sts = nf90_def_var_deflate(ncid, rec_varid, 1, 1, 1)
                 sts = nf90_put_att(ncid, rec_varid, "standard_name", "time")
-                sts = nf90_put_att(ncid, rec_varid, "long_name", "Time")
+                sts = nf90_put_att(ncid, rec_varid, "long_name", "time")
                 sts = nf90_put_att(ncid, rec_varid, "units", "days since " // tstot(1:10) // "T" // tstot(12:19) // "Z" )
                 sts = nf90_put_att(ncid, rec_varid, "calendar", calendar)
                 sts = nf90_put_att(ncid, rec_varid, "axis", "T")
-                IF ( ( cell_methods(ivar) == "mean" ) .OR. &
-                     ( cell_methods(ivar) == "sum" ) .OR. &
-                     ( cell_methods(ivar) == "minimum" ) .OR. &
-                     ( cell_methods(ivar) == "maximum" ) ) THEN
+                IF ( ( agg_method(ivar) == "mean" ) .OR. &
+                     ( agg_method(ivar) == "sum" ) .OR. &
+                     ( agg_method(ivar) == "minimum" ) .OR. &
+                     ( agg_method(ivar) == "maximum" ) ) THEN
                   sts = nf90_put_att(ncid, rec_varid, "bounds", "time_bnds")
                 END IF
   
-                IF ( ( cell_methods(ivar) == "mean" ) .OR. &
-                     ( cell_methods(ivar) == "sum" ) .OR. &
-                     ( cell_methods(ivar) == "minimum" ) .OR. &
-                     ( cell_methods(ivar) == "maximum" ) ) THEN
+                IF ( ( agg_method(ivar) == "mean" ) .OR. &
+                     ( agg_method(ivar) == "sum" ) .OR. &
+                     ( agg_method(ivar) == "minimum" ) .OR. &
+                     ( agg_method(ivar) == "maximum" ) ) THEN
                   sts = nf90_def_var(ncid, "time_bnds", NF90_DOUBLE, (/ nb2_dimid, rec_dimid /), recbnds_varid, fletcher32 = .true.)
                   sts = nf90_def_var_deflate(ncid, recbnds_varid, 1, 1, 1)
                 END IF
@@ -1493,6 +1478,13 @@ fnNMLvar(1) = "runctrl.vars.nml"
               !-----------------------------------------------------------------              
               ! global attributes always included
               sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "WRF_CMORizer_version", cmorizer_version)
+              sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "title", &
+                      TRIM(institution_id) // " " // &
+                      TRIM(source_id) // " downscaling of " // &
+                      TRIM(driving_source_id) // " " // &
+                      TRIM(driving_experiment_id) // " for " // &
+                      TRIM(project_id) // " " // &
+                      TRIM(domain_id))
               sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "activity_id", activity_id)
               sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "contact", contact)
               sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "Conventions", Conventions)
@@ -1516,10 +1508,10 @@ fnNMLvar(1) = "runctrl.vars.nml"
               sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "source", source)
               sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "source_id", source_id)
               sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "source_type", source_type)
+              sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "version_realization", version_realization)
               sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "tracking_id","hdl:21.14103/" //trackingID)
               sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "variable_id", var_cmip(ivar))
               sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "comment", comment)
-              !sts = NF90_PUT_ATT(ncid, NF90_GLOBAL, "version_realization", version_realization)
 
               !-----------------------------------------------------------------
               ! always included -- definition of the individual variable
@@ -1552,24 +1544,26 @@ fnNMLvar(1) = "runctrl.vars.nml"
               sts = nf90_put_att(ncid, x_varid, "standard_name", standard_name(ivar))
               sts = nf90_put_att(ncid, x_varid, "long_name", long_name(ivar))
               sts = nf90_put_att(ncid, x_varid, "units", units(ivar))
-              IF ( positive(ivar) /= '-999' ) THEN
-                sts = nf90_put_att(ncid, x_varid, "positive", positive(ivar))
-              END IF
+              !IF ( positive(ivar) /= "-999" ) THEN
+              !  sts = nf90_put_att(ncid, x_varid, "positive", positive(ivar))
+              !END IF
               
-              IF ( ( var_cmip(ivar) == "mrro" ) .OR. ( var_cmip(ivar) == "mrros" ) ) THEN
-                sts = nf90_put_att(ncid, x_varid, "cell_methods", "time: "//TRIM(cell_methods(ivar))//" area: "//TRIM(cell_methods(ivar))//" where land")
-              ELSE
-                sts = nf90_put_att(ncid, x_varid, "cell_methods", "time: "//TRIM(cell_methods(ivar)))
+
+              sts = nf90_put_att(ncid, x_varid, "cell_methods", TRIM(cell_methods(ivar)))
+              sts = nf90_put_att(ncid, x_varid, "cell_measures", TRIM(cell_measures(ivar)))
+
+              IF (LEN_TRIM(var_comm(ivar)) > 0 .AND. TRIM(var_comm(ivar)) /= "''") THEN
+                sts = nf90_put_att(ncid, x_varid, "comment", TRIM(var_comm(ivar))) 
               END IF
-              
+                         
               IF ( height(ivar) /= -999 ) THEN
                 sts = nf90_put_att(ncid, x_varid, "coordinates", "height lat lon")
               ELSE IF ( plevel(ivar) /= -999 ) THEN 
                 sts = nf90_put_att(ncid, x_varid, "coordinates", "plev lat lon") 
               ELSE IF ( (TRIM(var_cmip(ivar)) == 'mrsol')   .OR. &
                         (TRIM(var_cmip(ivar)) == 'mrsfl')   .OR. &
-                	(TRIM(var_cmip(ivar)) == 'tsl'  ) ) THEN
-                sts = nf90_put_att(ncid, x_varid, "coordinates", "sdepth lat lon") 
+                	      (TRIM(var_cmip(ivar)) == 'tsl'  ) ) THEN
+                sts = nf90_put_att(ncid, x_varid, "coordinates", "depth lat lon") 
               ELSE
                 sts = nf90_put_att(ncid, x_varid, "coordinates", "lat lon")
               END IF
@@ -1586,15 +1580,15 @@ fnNMLvar(1) = "runctrl.vars.nml"
 
               !-----------------------------------------------------------------
               ! Fill time dimension for instantaneous variables
-              IF ( cell_methods(ivar) == "point" ) THEN  
+              IF ( agg_method(ivar) == "point" ) THEN  
                 sts = NF90_PUT_VAR(ncid, rec_varid, TimeRefArraySubset(:,1) )
               END IF
 
               ! Fill time dimension for averaged variables                          
-              IF ( ( cell_methods(ivar) == "mean" ) .OR. &
-                   ( cell_methods(ivar) == "sum" ) .OR. &
-                   ( cell_methods(ivar) == "minimum" ) .OR. &
-                   ( cell_methods(ivar) == "maximum" ) ) THEN
+              IF ( ( agg_method(ivar) == "mean" ) .OR. &
+                   ( agg_method(ivar) == "sum" ) .OR. &
+                   ( agg_method(ivar) == "minimum" ) .OR. &
+                   ( agg_method(ivar) == "maximum" ) ) THEN
                 TimeRefArraySubsetMean (:) = TimeRefArraySubset(:,1) + ( 0.5_8 * (1._8 / (24._8/dtHours) ) )
                 sts = NF90_PUT_VAR(ncid, rec_varid, TimeRefArraySubsetMean(:) )                 
                 Time_bnds(1,:) = TimeRefArraySubset(:,1)
@@ -1726,7 +1720,6 @@ fnNMLvar(1) = "runctrl.vars.nml"
 
              IF ( (var_cmip(ivar) == "psl") &
                 .OR.  (var_cmip(ivar) == "prw") &
-                .OR.  (var_cmip(ivar) == "cin") &
                 .OR.  (var_cmip(ivar) == "clivi") &
                 .OR.  (var_cmip(ivar) == "clgvi") &
                 .OR.  (var_cmip(ivar) == "clhvi") &
@@ -1741,7 +1734,7 @@ fnNMLvar(1) = "runctrl.vars.nml"
               !-------------------------------------------------------------------
               ! internal vars needed in the pressure level / 3D processing section
 
-              ! always needed
+              ! Variable allocation              
               
               IF ( (plevel(ivar) /= -999) .AND. ( filetype(ivar) == "s") ) THEN
                 PRINT *, "prep. int. 3D pres. level vars"
@@ -1752,15 +1745,6 @@ fnNMLvar(1) = "runctrl.vars.nml"
                 END IF
               END IF
               
-              PRINT *, "allocate p_in, t_in, ph_fl" 
-              IF (.not. ALLOCATED(p_in))  ALLOCATE( p_in( xfocus, yfocus, nz ), STAT=sts ) 
-              IF (.not. ALLOCATED(t_in))  ALLOCATE( t_in( xfocus, yfocus, nz ), STAT=sts )
-              IF (.not. ALLOCATED(ph_fl)) ALLOCATE( ph_fl( xfocus, yfocus, nz ), STAT=sts )
-
-              IF ( var_cmip(ivar) == "prw" ) THEN
-                IF (.not. ALLOCATED(prw)) ALLOCATE( prw( xfocus, yfocus ), STAT=sts )
-              END IF
-
               IF ( var_cmip(ivar) == "psl" ) THEN
                 IF (.not. ALLOCATED(psl_in)) ALLOCATE( psl_in ( xfocus, yfocus ), STAT=sts )
               END IF
@@ -1776,22 +1760,17 @@ fnNMLvar(1) = "runctrl.vars.nml"
                 IF (.not. ALLOCATED(li))   ALLOCATE( li( xfocus, yfocus ), STAT=sts )
               END IF
 
-              IF ( var_cmip(ivar) == "clwvi" ) THEN
-                IF (.not. ALLOCATED(clwvi)) ALLOCATE( clwvi( xfocus, yfocus ), STAT=sts )
-              ENDIF
+              IF (.not. ALLOCATED(pres_in))  ALLOCATE( pres_in( xfocus, yfocus, nz+1 ), STAT=sts )
+              IF (.not. ALLOCATED(var2d_in)) ALLOCATE( var2d_in( xfocus, yfocus ), STAT=sts )
 
-              IF ( var_cmip(ivar) == "clivi" ) THEN
-                IF (.not. ALLOCATED(clivi)) ALLOCATE( clivi( xfocus, yfocus ), STAT=sts )
-              END IF
+              PRINT *, "allocate p_in, t_in, ph_fl"
+              IF (.not. ALLOCATED(p_in))  ALLOCATE( p_in( xfocus, yfocus, nz ), STAT=sts )
+              IF (.not. ALLOCATED(t_in))  ALLOCATE( t_in( xfocus, yfocus, nz ), STAT=sts )
+              IF (.not. ALLOCATED(ph_fl)) ALLOCATE( ph_fl( xfocus, yfocus, nz ), STAT=sts )
 
-              IF ( var_cmip(ivar) == "clgvi" ) THEN
-                IF (.not. ALLOCATED(clgvi)) ALLOCATE( clgvi( xfocus, yfocus ), STAT=sts )
-              END IF
-
-              IF ( var_cmip(ivar) == "clhvi" ) THEN
-                IF (.not. ALLOCATED(clhvi)) ALLOCATE( clhvi( xfocus, yfocus ), STAT=sts )
-              END IF
-
+              !-------------------------------------------------------------------
+              
+              ! Read needed variables  
               PRINT *, "read P"
               IF (.not. ALLOCATED(pp_in)) ALLOCATE( pp_in( xfocus, yfocus, nz ), STAT=sts )
               sts = NF90_INQ_VARID(ncidin, "P", pp_varid)
@@ -1821,8 +1800,18 @@ fnNMLvar(1) = "runctrl.vars.nml"
               sts = NF90_INQ_VARID(ncidin, "T", theta_varid)
               sts = NF90_GET_VAR(ncidin, theta_varid, theta_in(:,:,:), &
                 START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, nz, 1 /) )
-            !-------------------------------------------------------------------
+              
+              PRINT *, "read PSFC"
+              IF (.not. ALLOCATED(psfc_in)) ALLOCATE( psfc_in( xfocus, yfocus ), STAT=sts )
+                sts = NF90_INQ_VARID(ncidin, "PSFC", psfc_varid)
+                sts = NF90_GET_VAR(ncidin, psfc_varid, psfc_in(:,:), &
+                  START = (/ xoffset, yoffset, it /), COUNT = (/ xfocus, yfocus, 1 /) )
 
+              PRINT *, "read P_TOP"
+              sts = NF90_INQ_VARID(ncidin, "P_TOP", ptop_varid)
+              sts = NF90_GET_VAR(ncidin, ptop_varid, ptop_in, START = (/ it /), COUNT = (/ 1 /) )
+
+            !-------------------------------------------------------------------
               IF ( ( var_cmip(ivar) == "prw" ) &
                  .OR. ( var_cmip(ivar) == "psl" ) &
                  .OR. ( INDEX(var_cmip(ivar),"hus") == 1 ) &
@@ -1842,6 +1831,11 @@ fnNMLvar(1) = "runctrl.vars.nml"
                 sts = NF90_INQ_VARID(ncidin, "QCLOUD", qc_varid)
                 sts = NF90_GET_VAR(ncidin, qc_varid, qc_in(:,:,:), &
                   START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, nz, 1 /) )
+                PRINT *, "read QRAIN"
+                IF (.not. ALLOCATED(qr_in)) ALLOCATE( qr_in( xfocus, yfocus, nz  ), STAT=sts )
+                sts = NF90_INQ_VARID(ncidin, "QRAIN", qr_varid)
+                sts = NF90_GET_VAR(ncidin, qr_varid, qr_in(:,:,:), &
+                  START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, nz, 1 /) )
               END IF
 
               IF ( ( var_cmip(ivar) == "clwvi" ) .OR. ( var_cmip(ivar) == "clivi" ) ) THEN
@@ -1850,18 +1844,7 @@ fnNMLvar(1) = "runctrl.vars.nml"
                 sts = NF90_INQ_VARID(ncidin, "QICE", qi_varid)
                 sts = NF90_GET_VAR(ncidin, qi_varid, qi_in(:,:,:), &
                   START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, nz, 1 /) )
-              END IF
 
-              IF ( var_cmip(ivar) == "clwvi" ) THEN
-                PRINT *, "read QRAIN"
-                IF (.not. ALLOCATED(qr_in)) ALLOCATE( qr_in( xfocus, yfocus, nz  ), STAT=sts )
-                sts = NF90_INQ_VARID(ncidin, "QRAIN", qr_varid)
-                sts = NF90_GET_VAR(ncidin, qr_varid, qr_in(:,:,:), &
-                  START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, nz, 1 /) )
-              END IF
-  
-              IF ( ( var_cmip(ivar) == "clwvi" ) &
-                 .OR. ( var_cmip(ivar) == "clivi" ) ) THEN
                 PRINT *, "read QSNOW"
                 IF (.not. ALLOCATED(qs_in)) ALLOCATE( qs_in( xfocus, yfocus, nz  ), STAT=sts )
                 sts = NF90_INQ_VARID(ncidin, "QSNOW", qs_varid)
@@ -1907,14 +1890,6 @@ fnNMLvar(1) = "runctrl.vars.nml"
                   START = (/ xoffset, yoffset, 1, it /), COUNT = (/ xfocus, yfocus, nz+1, 1 /) )
               END IF
   
-              IF ( var_cmip(ivar) == "psl" ) THEN
-                PRINT *, "read PSFC"
-                IF (.not. ALLOCATED(psfc_in)) ALLOCATE( psfc_in( xfocus, yfocus ), STAT=sts )
-                sts = NF90_INQ_VARID(ncidin, "PSFC", psfc_varid)
-                sts = NF90_GET_VAR(ncidin, psfc_varid, psfc_in(:,:), &
-                  START = (/ xoffset, yoffset, it /), COUNT = (/ xfocus, yfocus, 1 /) )
-              END IF
-              
             !- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
             ! Reading data from wrfpress files
             ELSE IF ( filetype(ivar) == "p" )  THEN
@@ -2867,8 +2842,8 @@ fnNMLvar(1) = "runctrl.vars.nml"
             PRINT *, "variable to read/write with no additional processing = ", var_wrf(ivar)  
             sts = NF90_INQ_VARID(ncidin, TRIM(var_wrf(ivar)), varid)
   
-            IF ( ( cell_methods(ivar) == "minimum" ) .OR. &
-                 ( cell_methods(ivar) == "maximum" ) ) THEN
+            IF ( ( agg_method(ivar) == "minimum" ) .OR. &
+                 ( agg_method(ivar) == "maximum" ) ) THEN
               sts = NF90_GET_VAR(ncidin, varid, data_in(:,:), &
                     START = (/ xoffset, yoffset, it+1 /), COUNT = (/ xfocus, yfocus, 1 /) )
             ELSE 
@@ -3136,51 +3111,63 @@ fnNMLvar(1) = "runctrl.vars.nml"
 !- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ! prw [kg m-2] i Water Vapor Path
 
-            IF ( (var_cmip(ivar) == "prw") ) THEN  
-              prw(:,:) = 0.
-              DO nl = 1, nz
-                prw(:,:) = prw(:,:) + &
-                  (qv_in(:,:,nl) * p_in(:,:,nl)/(R*t_in(:,:,nl)) * &
-                  ((ph_in(:,:,nl+1)+phb_in(:,:,nl+1)) - (ph_in(:,:,nl)+ &
-                  phb_in(:,:,nl)))/gr)
+            IF ( (var_cmip(ivar) == "prw")) THEN
+
+              pres_in(:,:,1) = 0.5*( psfc_in(:,:) + p_in(:,:,1) )
+              pres_in(:,:,nz+1) = ptop_in(1)
+              DO nl = 2, nz
+                pres_in(:,:,nl) = 0.5*( p_in(:,:,nl-1) + p_in(:,:,nl) )
               END DO
-              data_in(:,:) = prw(:,:)
+
+              data_in(:,:) = 0.
+              DO nl = 1,nz
+                var2d_in = (qv_in(:,:,nl))/(1+(qv_in(:,:,nl)))
+                data_in(:,:) = data_in(:,:) + (var2d_in(:,:) * &
+                             ((pres_in(:,:,nl)-pres_in(:,:,nl+1))))/gr
+              END DO
+
               WHERE (data_in < 0.) data_in = 0.
             END IF
 
 !- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ! clwvi [kg m-2] i Condensed Water Path  
 
-            IF ( (var_cmip(ivar) == "clwvi") ) THEN
+            IF ( (var_cmip(ivar) == "clwvi")) THEN
 
-              clwvi(:,:) = 0.
-              DO nl = 1,nz - 1
-                clwvi(:,:) = clwvi(:,:) + (qc_in(:,:,nl) + qi_in(:,:,nl) + &
-                             qr_in(:,:,nl) + qs_in(:,:,nl) ) * p_in(:,:,nl)/ &
-                             (R*t_in(:,:,nl)) * ((ph_in(:,:,nl+1)+ &
-                             phb_in(:,:,nl+1)) - (ph_in(:,:,nl)+ &
-                             phb_in(:,:,nl)))/gr
+              pres_in(:,:,1) = 0.5*( psfc_in(:,:) + p_in(:,:,1) )
+              pres_in(:,:,nz+1) = ptop_in(1)
+              DO nl = 2, nz
+                pres_in(:,:,nl) = 0.5*( p_in(:,:,nl-1) + p_in(:,:,nl) )
               END DO
-              data_in(:,:) = clwvi(:,:)
+
+              data_in(:,:) = 0.
+              DO nl = 1,nz
+                var2d_in = (qc_in(:,:,nl) + qi_in(:,:,nl) + qr_in(:,:,nl) + qs_in(:,:,nl))/ &
+                        (1+(qc_in(:,:,nl) + qi_in(:,:,nl) + qr_in(:,:,nl) + qs_in(:,:,nl)))
+                data_in(:,:) = data_in(:,:) + (var2d_in(:,:) * &
+                             ((pres_in(:,:,nl)-pres_in(:,:,nl+1))))/gr
+              END DO
+
               WHERE (data_in < 0.) data_in = 0.
             END IF
-  
 !- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ! clivi  [kg m-2] i Ice Water Path
 
             IF ( (var_cmip(ivar) == "clivi")) THEN
-    
-              !t_in(:,:,:) = (theta_in(:,:,:)+T00)*((pp_in(:,:,:)+pb_in(:,:,:))/P00)**(R/cp)
-              !p_in(:,:,:) = pp_in(:,:,:) + pb_in(:,:,:)
-    
-              clivi(:,:) = 0.
-              DO nl = 1,nz - 1
-                clivi(:,:) = clivi(:,:) + (qi_in(:,:,nl) + qs_in(:,:,nl)) * &
-                             p_in(:,:,nl)/(R*t_in(:,:,nl)) * &
-                             ((ph_in(:,:,nl+1)+phb_in(:,:,nl+1)) - &
-                             (ph_in(:,:,nl)+phb_in(:,:,nl)))/gr
+              
+              pres_in(:,:,1) = 0.5*( psfc_in(:,:) + p_in(:,:,1) )
+              pres_in(:,:,nz+1) = ptop_in(1)
+              DO nl = 2, nz
+                pres_in(:,:,nl) = 0.5*( p_in(:,:,nl-1) + p_in(:,:,nl) )  
               END DO
-              data_in(:,:) = clivi(:,:)
+              
+              data_in(:,:) = 0.
+              DO nl = 1,nz
+                var2d_in = (qi_in(:,:,nl) + qs_in(:,:,nl))/(1+(qi_in(:,:,nl) + qs_in(:,:,nl)))
+                data_in(:,:) = data_in(:,:) + (var2d_in(:,:) * &
+                             ((pres_in(:,:,nl)-pres_in(:,:,nl+1))))/gr
+              END DO
+
               WHERE (data_in < 0.) data_in = 0.
             END IF
 
@@ -3189,17 +3176,19 @@ fnNMLvar(1) = "runctrl.vars.nml"
 
             IF ( (var_cmip(ivar) == "clgvi")) THEN
 
-              !t_in(:,:,:) = (theta_in(:,:,:)+T00)*((pp_in(:,:,:)+pb_in(:,:,:))/P00)**(R/cp)
-              !p_in(:,:,:) = pp_in(:,:,:) + pb_in(:,:,:)
+              pres_in(:,:,1) = 0.5*( psfc_in(:,:) + p_in(:,:,1) )
+              pres_in(:,:,nz+1) = ptop_in(1)
+              DO nl = 2, nz
+                pres_in(:,:,nl) = 0.5*( p_in(:,:,nl-1) + p_in(:,:,nl) )  
+              END DO
+                
+              data_in(:,:) = 0.
+              DO nl = 1,nz
+                var2d_in = (qg_in(:,:,nl))/(1+qg_in(:,:,nl))
+                data_in(:,:) = data_in(:,:) + (var2d_in(:,:) * &
+                             ((pres_in(:,:,nl)-pres_in(:,:,nl+1))))/gr
+              END DO
 
-              clgvi(:,:) = 0.
-              DO nl = 1,nz - 1
-                clgvi(:,:) = clgvi(:,:) + (qg_in(:,:,nl)) * &
-                             p_in(:,:,nl)/(R*t_in(:,:,nl)) * &
-                             ((ph_in(:,:,nl+1)+phb_in(:,:,nl+1)) - &
-                             (ph_in(:,:,nl)+phb_in(:,:,nl)))/gr
-              END DO              
-              data_in(:,:) = clgvi(:,:)
               WHERE (data_in < 0.) data_in = 0.
             END IF
 
@@ -3208,17 +3197,20 @@ fnNMLvar(1) = "runctrl.vars.nml"
 
             IF ( (var_cmip(ivar) == "clhvi")) THEN
 
-              !t_in(:,:,:) = (theta_in(:,:,:)+T00)*((pp_in(:,:,:)+pb_in(:,:,:))/P00)**(R/cp)
-              !p_in(:,:,:) = pp_in(:,:,:) + pb_in(:,:,:)
 
-              clhvi(:,:) = 0.
-              DO nl = 1,nz - 1
-                clhvi(:,:) = clhvi(:,:) + (qh_in(:,:,nl)) * &
-                             p_in(:,:,nl)/(R*t_in(:,:,nl)) * &
-                             ((ph_in(:,:,nl+1)+phb_in(:,:,nl+1)) - &
-                             (ph_in(:,:,nl)+phb_in(:,:,nl)))/gr
+              pres_in(:,:,1) = 0.5*( psfc_in(:,:) + p_in(:,:,1) )
+              pres_in(:,:,nz+1) = ptop_in(1)
+              DO nl = 2, nz
+                pres_in(:,:,nl) = 0.5*( p_in(:,:,nl-1) + p_in(:,:,nl) )
               END DO
-              data_in(:,:) = clhvi(:,:)
+            
+              data_in(:,:) = 0.
+              DO nl = 1,nz
+                var2d_in = (qh_in(:,:,nl))/(1+qh_in(:,:,nl))
+                data_in(:,:) = data_in(:,:) + (var2d_in(:,:) * &
+                             ((pres_in(:,:,nl)-pres_in(:,:,nl+1))))/gr
+              END DO
+
               WHERE (data_in < 0.) data_in = 0.
             END IF
 
@@ -3274,16 +3266,23 @@ fnNMLvar(1) = "runctrl.vars.nml"
                   END DO
                  
                   DO nl = 1,nz-1
+                    IF (nl .eq. 1) then
+                        dgph = phb_in(i,j,nl)+ph_in(i,j,nl)
+                    ELSE
+                        dgph = (phb_in(i,j,nl)+ph_in(i,j,nl))-(phb_in(i,j,nl-1)+ph_in(i,j,nl-1))
+                    END IF
                     IF (lfc(i,j) .gt. 0.) THEN
                       IF ( (t_p(i,j,nl) .gt. t_in(i,j,nl)) .AND. (p_in(i,j,nl) .lt. lfc(i,j)) ) THEN   
-                        cape(i,j) = cape(i,j) + (t_p(i,j,nl) - t_in(i,j,nl)) / t_in(i,j,nl) * ((phb_in(i,j,nl)+ph_in(i,j,nl))-(phb_in(i,j,nl-1)+ph_in(i,j,nl-1)))      
+                        cape(i,j) = cape(i,j) + (t_p(i,j,nl) - t_in(i,j,nl)) / t_in(i,j,nl) * (dgph)   
                       ELSE IF ( (t_p(i,j,nl) .lt. t_in(i,j,nl)) .AND. (p_in(i,j,nl) .ge. lfc(i,j)) ) THEN ! convective inhibition 
-                        cin(i,j) = cin(i,j) + (t_in(i,j,nl) - t_p(i,j,nl)) / t_in(i,j,nl) * ((phb_in(i,j,nl)+ph_in(i,j,nl))-(phb_in(i,j,nl-1)+ph_in(i,j,nl-1)))
+                        cin(i,j) = cin(i,j) + (t_in(i,j,nl) - t_p(i,j,nl)) / t_in(i,j,nl) * (dgph)
                       END IF
                     END IF
                     
-                    IF ( (p_in(i,j,nl) .lt. 50000.) ) THEN
-                      li(i,j) = t_in(i,j,nl) - t_p(i,j,nl)
+                    IF ( (p_in(i,j,nl) .ge. 50000.0) .and. (p_in(i,j,nl+1) .lt. 50000.0) ) THEN
+                      slope = (50000.0 - p_in(i,j,nl)) / (p_in(i,j,nl+1) - p_in(i,j,nl))
+                      li(i,j) = (t_in(i,j,nl) + slope  * (t_in(i,j,nl+1) - t_in(i,j,nl))) - &
+                                (t_p(i,j,nl)  + slope  * (t_p(i,j,nl+1)  - t_p(i,j,nl)))
                       exit
                     END IF
                   END DO
@@ -4011,6 +4010,52 @@ fnNMLvar(1) = "runctrl.vars.nml"
 END DO ! ifrq - different temporal aggregations
 
 !===============================================================================
+CONTAINS
+
+FUNCTION get_cell_method(cell_methods) RESULT(method)
+
+  IMPLICIT NONE
+  CHARACTER(LEN=*), INTENT(IN) :: cell_methods(:)
+  CHARACTER(LEN=20)            :: method(SIZE(cell_methods))
+
+  CHARACTER(LEN=256) :: time_part
+  CHARACTER(LEN=20)  :: word
+  INTEGER            :: pos, ios, i
+
+  DO i = 1, SIZE(cell_methods)
+    ! Default for fx variables (no time: present)
+    method(i) = 'point'
+    pos = INDEX(cell_methods(i), 'time:')
+    IF (pos == 0) CYCLE
+
+    ! Take everything after the first occurrence of "time:"
+    time_part = ADJUSTL(cell_methods(i)(pos+5:))
+
+    ! Read first word after "time:"
+    READ(time_part, *, IOSTAT=ios) word
+    IF (ios /= 0) THEN
+      PRINT *, 'ERROR reading cell_methods: ', TRIM(cell_methods(i))
+      STOP
+    END IF
+    SELECT CASE (TRIM(word))
+    CASE ('point')
+      method(i) = 'point'
+    CASE ('mean')
+      method(i) = 'mean'
+    CASE ('maximum')
+      method(i) = 'maximum'
+    CASE ('minimum')
+      method(i) = 'minimum'
+    CASE ('sum')
+      method(i) = 'sum'
+    CASE DEFAULT
+      PRINT *, 'ERROR: unknown time method: ', TRIM(word)
+      PRINT *, 'cell_methods = ', TRIM(cell_methods(i))
+      STOP
+    END SELECT
+  END DO
+END FUNCTION get_cell_method
+
 
 END PROGRAM WRFCMORizer
 
